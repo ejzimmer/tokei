@@ -24,8 +24,8 @@ interface CardRefs {
   display: HTMLDivElement
   lastFinished: HTMLDivElement
   pickerArea: HTMLDivElement
-  minValue: HTMLDivElement
-  secValue: HTMLDivElement
+  minValue: HTMLInputElement
+  secValue: HTMLInputElement
   soundSelect: HTMLSelectElement
   startBtn: HTMLButtonElement
   resetBtn: HTMLButtonElement
@@ -39,7 +39,6 @@ const app = document.querySelector<HTMLDivElement>("#app")!
 app.innerHTML = `
   <header class="header">
     <h1>時計 Tokei</h1>
-    <p>Timers that keep ringing, even locked</p>
   </header>
   <main id="timer-list" class="timer-list"></main>
   <footer class="footer">
@@ -87,6 +86,11 @@ function persist() {
   saveTimers(timers)
 }
 
+function clamp(value: number, min: number, max: number): number {
+  if (Number.isNaN(value)) return min
+  return Math.min(max, Math.max(min, value))
+}
+
 function mountTimerCard(timer: TimerState) {
   const card = document.createElement("section")
   card.className = "timer-card"
@@ -103,13 +107,13 @@ function mountTimerCard(timer: TimerState) {
       <div class="picker">
         <div class="picker-unit">
           <button class="picker-btn" data-adjust="min" data-delta="1">+</button>
-          <div class="picker-value" data-role="min-value">${pad(timer.minutes)}</div>
+          <input class="picker-value" data-role="min-value" type="number" inputmode="numeric" min="0" max="999" value="${timer.minutes}" />
           <button class="picker-btn" data-adjust="min" data-delta="-1">&minus;</button>
         </div>
         <div class="picker-sep clock-display" style="font-size:1.6rem">:</div>
         <div class="picker-unit">
           <button class="picker-btn" data-adjust="sec" data-delta="5">+</button>
-          <div class="picker-value" data-role="sec-value">${pad(timer.seconds)}</div>
+          <input class="picker-value" data-role="sec-value" type="number" inputmode="numeric" min="0" max="59" value="${timer.seconds}" />
           <button class="picker-btn" data-adjust="sec" data-delta="-5">&minus;</button>
         </div>
       </div>
@@ -174,9 +178,9 @@ function mountTimerCard(timer: TimerState) {
     } else if (target) {
       const delta = Number(target.dataset.delta)
       if (target.dataset.adjust === "min") {
-        timer.minutes = Math.min(180, Math.max(0, timer.minutes + delta))
+        timer.minutes = clamp(timer.minutes + delta, 0, 999)
       } else {
-        timer.seconds = Math.min(55, Math.max(0, timer.seconds + delta))
+        timer.seconds = clamp(timer.seconds + delta, 0, 59)
       }
     } else {
       return
@@ -184,6 +188,22 @@ function mountTimerCard(timer: TimerState) {
     persist()
     updateCardUI(timer)
   })
+
+  refs.minValue.addEventListener("input", () => {
+    if (timer.status !== "idle") return
+    timer.minutes = clamp(parseInt(refs.minValue.value, 10), 0, 999)
+    persist()
+    refs.display.textContent = formatMs(selectedDurationMs(timer))
+  })
+  refs.minValue.addEventListener("blur", () => updateCardUI(timer))
+
+  refs.secValue.addEventListener("input", () => {
+    if (timer.status !== "idle") return
+    timer.seconds = clamp(parseInt(refs.secValue.value, 10), 0, 59)
+    persist()
+    refs.display.textContent = formatMs(selectedDurationMs(timer))
+  })
+  refs.secValue.addEventListener("blur", () => updateCardUI(timer))
 
   listEl.appendChild(card)
   updateCardUI(timer)
@@ -193,8 +213,8 @@ function updateCardUI(timer: TimerState) {
   const refs = cardRefs.get(timer.id)
   if (!refs) return
 
-  refs.minValue.textContent = pad(timer.minutes)
-  refs.secValue.textContent = pad(timer.seconds)
+  refs.minValue.value = String(timer.minutes)
+  refs.secValue.value = String(timer.seconds)
   refs.root.dataset.status = timer.status
 
   refs.pickerArea.classList.toggle("hidden", timer.status !== "idle")

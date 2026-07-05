@@ -173,9 +173,28 @@ body {
 }
 
 .picker-value {
-  min-width: 2.2ch;
+  width: 2.6ch;
   text-align: center;
   font-variant-numeric: tabular-nums;
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--face);
+  font-size: 1rem;
+  font-family: inherit;
+  padding: 2px 0;
+  -moz-appearance: textfield;
+}
+
+.picker-value::-webkit-outer-spin-button,
+.picker-value::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.picker-value:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
 }
 
 .presets {
