@@ -132,6 +132,28 @@ body {
   font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1;
+  width: 100%;
+  text-align: center;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--face);
+  font-family: inherit;
+  padding-bottom: 4px;
+}
+
+.clock-display:not([readonly]) {
+  border-bottom-color: var(--face-dim);
+  cursor: text;
+}
+
+.clock-display:not([readonly]):focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.clock-display[readonly] {
+  cursor: default;
 }
 
 .clock-display.running {
@@ -143,80 +165,6 @@ body {
   text-align: center;
   font-size: 0.75rem;
   color: var(--face-dim);
-}
-
-.picker {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.15em;
-}
-
-.picker-unit {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.picker-btn {
-  background: none;
-  border: none;
-  color: var(--face-dim);
-  font-size: 1.3rem;
-  line-height: 1;
-  padding: 4px 14px;
-  cursor: pointer;
-}
-
-.picker-btn:active {
-  color: var(--accent);
-}
-
-.picker-value {
-  width: 2.6ch;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  background: none;
-  border: none;
-  border-bottom: 1px solid transparent;
-  color: var(--face);
-  font-size: 1rem;
-  font-family: inherit;
-  padding: 2px 0;
-  -moz-appearance: textfield;
-}
-
-.picker-value::-webkit-outer-spin-button,
-.picker-value::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.picker-value:focus {
-  outline: none;
-  border-bottom-color: var(--accent);
-}
-
-.presets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: center;
-  margin-top: 8px;
-}
-
-.chip {
-  background: var(--bg-raised);
-  color: var(--face);
-  border: 1px solid transparent;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 0.82rem;
-  cursor: pointer;
-}
-
-.chip:active {
-  border-color: var(--accent);
 }
 
 .sound-row {
@@ -323,8 +271,4 @@ body {
 .tips ul {
   margin: 8px 0 0;
   padding-left: 1.2em;
-}
-
-.hidden {
-  display: none !important;
 }

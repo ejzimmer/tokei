@@ -14,18 +14,14 @@ import {
 } from "./audio"
 
 const TICK_MS = 250
-const PRESETS_MIN = [1, 3, 5, 10, 15, 20, 30, 45, 60]
 
 const timers: TimerState[] = loadTimers()
 
 interface CardRefs {
   root: HTMLElement
   nameInput: HTMLInputElement
-  display: HTMLDivElement
+  display: HTMLInputElement
   lastFinished: HTMLDivElement
-  pickerArea: HTMLDivElement
-  minValue: HTMLInputElement
-  secValue: HTMLInputElement
   soundSelect: HTMLSelectElement
   startBtn: HTMLButtonElement
   resetBtn: HTMLButtonElement
@@ -91,6 +87,20 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+// Digit-shift entry, like typing on a microwave: the last two digits typed
+// are always seconds, everything before that is minutes. No colon needed,
+// so it works cleanly with a numeric-only mobile keyboard.
+function parseDigitsToDuration(digits: string): { minutes: number; seconds: number } {
+  if (!digits) return { minutes: 0, seconds: 0 }
+  const n = parseInt(digits, 10) || 0
+  const rawSeconds = n % 100
+  const minutesFromDigits = Math.floor(n / 100)
+  return {
+    minutes: clamp(minutesFromDigits + Math.floor(rawSeconds / 60), 0, 999),
+    seconds: rawSeconds % 60,
+  }
+}
+
 function mountTimerCard(timer: TimerState) {
   const card = document.createElement("section")
   card.className = "timer-card"
@@ -100,27 +110,15 @@ function mountTimerCard(timer: TimerState) {
       <button class="icon-btn" data-role="delete" title="Delete timer">&times;</button>
     </div>
     <div class="clock">
-      <div class="clock-display" data-role="display">${formatMs(selectedDurationMs(timer))}</div>
+      <input
+        class="clock-display"
+        data-role="display"
+        inputmode="numeric"
+        autocomplete="off"
+        value="${formatMs(selectedDurationMs(timer))}"
+      />
     </div>
     <div class="last-finished" data-role="last-finished"></div>
-    <div class="picker-area" data-role="picker-area">
-      <div class="picker">
-        <div class="picker-unit">
-          <button class="picker-btn" data-adjust="min" data-delta="1">+</button>
-          <input class="picker-value" data-role="min-value" type="number" inputmode="numeric" min="0" max="999" value="${timer.minutes}" />
-          <button class="picker-btn" data-adjust="min" data-delta="-1">&minus;</button>
-        </div>
-        <div class="picker-sep clock-display" style="font-size:1.6rem">:</div>
-        <div class="picker-unit">
-          <button class="picker-btn" data-adjust="sec" data-delta="5">+</button>
-          <input class="picker-value" data-role="sec-value" type="number" inputmode="numeric" min="0" max="59" value="${timer.seconds}" />
-          <button class="picker-btn" data-adjust="sec" data-delta="-5">&minus;</button>
-        </div>
-      </div>
-      <div class="presets">
-        ${PRESETS_MIN.map((m) => `<button class="chip" data-preset="${m}">${m}m</button>`).join("")}
-      </div>
-    </div>
     <div class="sound-row">
       <select class="sound-select" data-role="sound-select">${soundOptions(timer.soundId)}</select>
       <button class="icon-btn" data-role="preview" title="Preview sound">&#9658;</button>
@@ -141,9 +139,6 @@ function mountTimerCard(timer: TimerState) {
     nameInput: card.querySelector(".timer-name")!,
     display: card.querySelector('[data-role="display"]')!,
     lastFinished: card.querySelector('[data-role="last-finished"]')!,
-    pickerArea: card.querySelector('[data-role="picker-area"]')!,
-    minValue: card.querySelector('[data-role="min-value"]')!,
-    secValue: card.querySelector('[data-role="sec-value"]')!,
     soundSelect: card.querySelector('[data-role="sound-select"]')!,
     startBtn: card.querySelector('[data-role="start"]')!,
     resetBtn: card.querySelector('[data-role="reset"]')!,
@@ -168,42 +163,28 @@ function mountTimerCard(timer: TimerState) {
     persist()
   })
 
-  refs.pickerArea.addEventListener("click", (e) => {
+  refs.display.addEventListener("focus", () => {
     if (timer.status !== "idle") return
-    const target = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-adjust]")
-    const preset = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-preset]")
-    if (preset) {
-      timer.minutes = Number(preset.dataset.preset)
-      timer.seconds = 0
-    } else if (target) {
-      const delta = Number(target.dataset.delta)
-      if (target.dataset.adjust === "min") {
-        timer.minutes = clamp(timer.minutes + delta, 0, 999)
-      } else {
-        timer.seconds = clamp(timer.seconds + delta, 0, 59)
-      }
-    } else {
-      return
-    }
-    persist()
-    updateCardUI(timer)
+    refs.display.select()
   })
 
-  refs.minValue.addEventListener("input", () => {
+  refs.display.addEventListener("input", () => {
     if (timer.status !== "idle") return
-    timer.minutes = clamp(parseInt(refs.minValue.value, 10), 0, 999)
+    const digits = refs.display.value.replace(/\D/g, "")
+    const { minutes, seconds } = parseDigitsToDuration(digits)
+    timer.minutes = minutes
+    timer.seconds = seconds
     persist()
-    refs.display.textContent = formatMs(selectedDurationMs(timer))
+    refs.display.value = formatMs(selectedDurationMs(timer))
+    const end = refs.display.value.length
+    refs.display.setSelectionRange(end, end)
   })
-  refs.minValue.addEventListener("blur", () => updateCardUI(timer))
 
-  refs.secValue.addEventListener("input", () => {
-    if (timer.status !== "idle") return
-    timer.seconds = clamp(parseInt(refs.secValue.value, 10), 0, 59)
-    persist()
-    refs.display.textContent = formatMs(selectedDurationMs(timer))
+  refs.display.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") refs.display.blur()
   })
-  refs.secValue.addEventListener("blur", () => updateCardUI(timer))
+
+  refs.display.addEventListener("blur", () => updateCardUI(timer))
 
   listEl.appendChild(card)
   updateCardUI(timer)
@@ -213,28 +194,25 @@ function updateCardUI(timer: TimerState) {
   const refs = cardRefs.get(timer.id)
   if (!refs) return
 
-  refs.minValue.value = String(timer.minutes)
-  refs.secValue.value = String(timer.seconds)
   refs.root.dataset.status = timer.status
-
-  refs.pickerArea.classList.toggle("hidden", timer.status !== "idle")
   refs.ringingBanner.hidden = timer.status !== "ringing"
   refs.display.classList.toggle("running", timer.status === "running")
+  refs.display.readOnly = timer.status !== "idle"
 
   if (timer.status === "idle") {
-    refs.display.textContent = formatMs(selectedDurationMs(timer))
+    refs.display.value = formatMs(selectedDurationMs(timer))
     refs.startBtn.textContent = "Start"
     refs.startBtn.disabled = false
   } else if (timer.status === "paused") {
-    refs.display.textContent = formatMs(timer.pausedRemainingMs ?? 0)
+    refs.display.value = formatMs(timer.pausedRemainingMs ?? 0)
     refs.startBtn.textContent = "Resume"
     refs.startBtn.disabled = false
   } else if (timer.status === "running" && timer.endAt !== null) {
-    refs.display.textContent = formatMs(timer.endAt - Date.now())
+    refs.display.value = formatMs(timer.endAt - Date.now())
     refs.startBtn.textContent = "Pause"
     refs.startBtn.disabled = false
   } else if (timer.status === "ringing") {
-    refs.display.textContent = "00:00"
+    refs.display.value = "00:00"
     refs.startBtn.disabled = true
     if (timer.finishedAt !== null) refs.finishedTime.textContent = formatClock(timer.finishedAt)
   }
