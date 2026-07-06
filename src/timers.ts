@@ -5,6 +5,7 @@ export type TimerStatus = "idle" | "running" | "paused" | "ringing"
 export interface TimerState {
   id: string
   name: string
+  hours: number
   minutes: number
   seconds: number
   soundId: string
@@ -22,7 +23,19 @@ export interface TimerState {
 const STORAGE_KEY = "tokei.timers.v1"
 
 export function selectedDurationMs(timer: TimerState): number {
-  return (timer.minutes * 60 + timer.seconds) * 1000
+  return ((timer.hours * 60 + timer.minutes) * 60 + timer.seconds) * 1000
+}
+
+/** Carries overflowing seconds into minutes, and overflowing minutes into hours. */
+export function normalizeDuration(timer: Pick<TimerState, "hours" | "minutes" | "seconds">) {
+  if (timer.seconds >= 60) {
+    timer.minutes += Math.floor(timer.seconds / 60)
+    timer.seconds = timer.seconds % 60
+  }
+  if (timer.minutes >= 60) {
+    timer.hours += Math.floor(timer.minutes / 60)
+    timer.minutes = timer.minutes % 60
+  }
 }
 
 let nextSoundIndex = 0
@@ -33,6 +46,7 @@ export function createTimer(name: string): TimerState {
   return {
     id: crypto.randomUUID(),
     name,
+    hours: 0,
     minutes: 5,
     seconds: 0,
     soundId: sound.id,
@@ -55,10 +69,11 @@ export function loadTimers(): TimerState[] {
     // live JS to notice it elapsed. Catch it up now, on load.
     const now = Date.now()
     return parsed.map((timer) => {
-      if (timer.status === "running" && timer.endAt !== null && timer.endAt <= now) {
-        return { ...timer, status: "ringing" as const, finishedAt: timer.endAt }
+      const withHours: TimerState = { ...timer, hours: timer.hours ?? 0 }
+      if (withHours.status === "running" && withHours.endAt !== null && withHours.endAt <= now) {
+        return { ...withHours, status: "ringing" as const, finishedAt: withHours.endAt }
       }
-      return timer
+      return withHours
     })
   } catch {
     return [createTimer("Timer 1")]

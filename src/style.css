@@ -126,13 +126,27 @@ body {
   justify-content: center;
 }
 
+.hms {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.05em;
+}
+
+.clock-sep {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(2.4rem, 12vw, 3.2rem);
+  font-weight: 600;
+  color: var(--face-dim);
+}
+
 .clock-display {
   font-variant-numeric: tabular-nums;
   font-size: clamp(2.4rem, 12vw, 3.2rem);
   font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1;
-  width: 100%;
+  width: 2ch;
   text-align: center;
   background: none;
   border: none;

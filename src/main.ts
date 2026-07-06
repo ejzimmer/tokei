@@ -1,6 +1,13 @@
 import "./style.css"
 import { SOUNDS } from "./sounds"
-import { createTimer, loadTimers, saveTimers, selectedDurationMs, type TimerState } from "./timers"
+import {
+  createTimer,
+  loadTimers,
+  normalizeDuration,
+  saveTimers,
+  selectedDurationMs,
+  type TimerState,
+} from "./timers"
 import {
   closeTimerNotification,
   getAudioContext,
@@ -17,10 +24,14 @@ const TICK_MS = 250
 
 const timers: TimerState[] = loadTimers()
 
+type DurationField = "hours" | "minutes" | "seconds"
+
 interface CardRefs {
   root: HTMLElement
   nameInput: HTMLInputElement
-  display: HTMLInputElement
+  hoursInput: HTMLInputElement
+  minutesInput: HTMLInputElement
+  secondsInput: HTMLInputElement
   lastFinished: HTMLDivElement
   soundSelect: HTMLSelectElement
   startBtn: HTMLButtonElement
@@ -60,12 +71,51 @@ function pad(n: number): string {
   return n.toString().padStart(2, "0")
 }
 
-function formatMs(ms: number): string {
+function msToParts(ms: number): { hours: number; minutes: number; seconds: number } {
   const totalSeconds = Math.max(0, Math.round(ms / 1000))
-  const h = Math.floor(totalSeconds / 3600)
-  const m = Math.floor((totalSeconds % 3600) / 60)
-  const s = totalSeconds % 60
-  return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
+  return {
+    hours: Math.floor(totalSeconds / 3600),
+    minutes: Math.floor((totalSeconds % 3600) / 60),
+    seconds: totalSeconds % 60,
+  }
+}
+
+function setDurationFields(refs: CardRefs, parts: { hours: number; minutes: number; seconds: number }) {
+  refs.hoursInput.value = pad(parts.hours)
+  refs.minutesInput.value = pad(parts.minutes)
+  refs.secondsInput.value = pad(parts.seconds)
+}
+
+// Each field always shows two digits and shifts left as you type, like a
+// microwave keypad: 00 -> 01 -> 11. Seconds/minutes overflowing 59 carry
+// straight into the next field up (typing 90 into seconds becomes 1:30).
+function bindDurationField(timer: TimerState, input: HTMLInputElement, field: DurationField) {
+  input.addEventListener("focus", () => {
+    if (timer.status === "idle") input.select()
+  })
+
+  input.addEventListener("paste", (e) => e.preventDefault())
+
+  input.addEventListener("keydown", (e) => {
+    if (timer.status !== "idle") return
+    if (/^[0-9]$/.test(e.key)) {
+      e.preventDefault()
+      timer[field] = (timer[field] * 10 + Number(e.key)) % 100
+      normalizeDuration(timer)
+      persist()
+      updateCardUI(timer)
+    } else if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault()
+      timer[field] = Math.floor(timer[field] / 10)
+      normalizeDuration(timer)
+      persist()
+      updateCardUI(timer)
+    } else if (e.key === "Enter") {
+      input.blur()
+    } else if (!CONTROL_KEYS.has(e.key)) {
+      e.preventDefault()
+    }
+  })
 }
 
 function formatClock(ts: number): string {
@@ -82,24 +132,21 @@ function persist() {
   saveTimers(timers)
 }
 
-function clamp(value: number, min: number, max: number): number {
-  if (Number.isNaN(value)) return min
-  return Math.min(max, Math.max(min, value))
-}
-
-// Digit-shift entry, like typing on a microwave: the last two digits typed
-// are always seconds, everything before that is minutes. No colon needed,
-// so it works cleanly with a numeric-only mobile keyboard.
-function parseDigitsToDuration(digits: string): { minutes: number; seconds: number } {
-  if (!digits) return { minutes: 0, seconds: 0 }
-  const n = parseInt(digits, 10) || 0
-  const rawSeconds = n % 100
-  const minutesFromDigits = Math.floor(n / 100)
-  return {
-    minutes: clamp(minutesFromDigits + Math.floor(rawSeconds / 60), 0, 999),
-    seconds: rawSeconds % 60,
-  }
-}
+const CONTROL_KEYS = new Set([
+  "Tab",
+  "Shift",
+  "Control",
+  "Meta",
+  "Alt",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Enter",
+  "Backspace",
+  "Delete",
+  "Escape",
+])
 
 function mountTimerCard(timer: TimerState) {
   const card = document.createElement("section")
@@ -110,13 +157,13 @@ function mountTimerCard(timer: TimerState) {
       <button class="icon-btn" data-role="delete" title="Delete timer">&times;</button>
     </div>
     <div class="clock">
-      <input
-        class="clock-display"
-        data-role="display"
-        inputmode="numeric"
-        autocomplete="off"
-        value="${formatMs(selectedDurationMs(timer))}"
-      />
+      <div class="hms">
+        <input class="clock-display" data-role="hours" inputmode="numeric" autocomplete="off" maxlength="2" value="${pad(timer.hours)}" />
+        <span class="clock-sep">:</span>
+        <input class="clock-display" data-role="minutes" inputmode="numeric" autocomplete="off" maxlength="2" value="${pad(timer.minutes)}" />
+        <span class="clock-sep">:</span>
+        <input class="clock-display" data-role="seconds" inputmode="numeric" autocomplete="off" maxlength="2" value="${pad(timer.seconds)}" />
+      </div>
     </div>
     <div class="last-finished" data-role="last-finished"></div>
     <div class="sound-row">
@@ -137,7 +184,9 @@ function mountTimerCard(timer: TimerState) {
   const refs: CardRefs = {
     root: card,
     nameInput: card.querySelector(".timer-name")!,
-    display: card.querySelector('[data-role="display"]')!,
+    hoursInput: card.querySelector('[data-role="hours"]')!,
+    minutesInput: card.querySelector('[data-role="minutes"]')!,
+    secondsInput: card.querySelector('[data-role="seconds"]')!,
     lastFinished: card.querySelector('[data-role="last-finished"]')!,
     soundSelect: card.querySelector('[data-role="sound-select"]')!,
     startBtn: card.querySelector('[data-role="start"]')!,
@@ -163,28 +212,9 @@ function mountTimerCard(timer: TimerState) {
     persist()
   })
 
-  refs.display.addEventListener("focus", () => {
-    if (timer.status !== "idle") return
-    refs.display.select()
-  })
-
-  refs.display.addEventListener("input", () => {
-    if (timer.status !== "idle") return
-    const digits = refs.display.value.replace(/\D/g, "")
-    const { minutes, seconds } = parseDigitsToDuration(digits)
-    timer.minutes = minutes
-    timer.seconds = seconds
-    persist()
-    refs.display.value = formatMs(selectedDurationMs(timer))
-    const end = refs.display.value.length
-    refs.display.setSelectionRange(end, end)
-  })
-
-  refs.display.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") refs.display.blur()
-  })
-
-  refs.display.addEventListener("blur", () => updateCardUI(timer))
+  bindDurationField(timer, refs.hoursInput, "hours")
+  bindDurationField(timer, refs.minutesInput, "minutes")
+  bindDurationField(timer, refs.secondsInput, "seconds")
 
   listEl.appendChild(card)
   updateCardUI(timer)
@@ -196,23 +226,28 @@ function updateCardUI(timer: TimerState) {
 
   refs.root.dataset.status = timer.status
   refs.ringingBanner.hidden = timer.status !== "ringing"
-  refs.display.classList.toggle("running", timer.status === "running")
-  refs.display.readOnly = timer.status !== "idle"
+  const readOnly = timer.status !== "idle"
+  refs.hoursInput.readOnly = readOnly
+  refs.minutesInput.readOnly = readOnly
+  refs.secondsInput.readOnly = readOnly
+  refs.hoursInput.classList.toggle("running", timer.status === "running")
+  refs.minutesInput.classList.toggle("running", timer.status === "running")
+  refs.secondsInput.classList.toggle("running", timer.status === "running")
 
   if (timer.status === "idle") {
-    refs.display.value = formatMs(selectedDurationMs(timer))
+    setDurationFields(refs, timer)
     refs.startBtn.textContent = "Start"
     refs.startBtn.disabled = false
   } else if (timer.status === "paused") {
-    refs.display.value = formatMs(timer.pausedRemainingMs ?? 0)
+    setDurationFields(refs, msToParts(timer.pausedRemainingMs ?? 0))
     refs.startBtn.textContent = "Resume"
     refs.startBtn.disabled = false
   } else if (timer.status === "running" && timer.endAt !== null) {
-    refs.display.value = formatMs(timer.endAt - Date.now())
+    setDurationFields(refs, msToParts(timer.endAt - Date.now()))
     refs.startBtn.textContent = "Pause"
     refs.startBtn.disabled = false
   } else if (timer.status === "ringing") {
-    refs.display.value = "00:00"
+    setDurationFields(refs, { hours: 0, minutes: 0, seconds: 0 })
     refs.startBtn.disabled = true
     if (timer.finishedAt !== null) refs.finishedTime.textContent = formatClock(timer.finishedAt)
   }
