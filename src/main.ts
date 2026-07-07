@@ -29,9 +29,11 @@ type DurationField = "hours" | "minutes" | "seconds"
 interface CardRefs {
   root: HTMLElement
   nameInput: HTMLInputElement
+  hmsInput: HTMLDivElement
   hoursInput: HTMLInputElement
   minutesInput: HTMLInputElement
   secondsInput: HTMLInputElement
+  hmsText: HTMLDivElement
   lastFinished: HTMLDivElement
   soundSelect: HTMLSelectElement
   startBtn: HTMLButtonElement
@@ -84,6 +86,10 @@ function setDurationFields(refs: CardRefs, parts: { hours: number; minutes: numb
   refs.hoursInput.value = pad(parts.hours)
   refs.minutesInput.value = pad(parts.minutes)
   refs.secondsInput.value = pad(parts.seconds)
+}
+
+function setDurationText(refs: CardRefs, parts: { hours: number; minutes: number; seconds: number }) {
+  refs.hmsText.textContent = `${pad(parts.hours)}:${pad(parts.minutes)}:${pad(parts.seconds)}`
 }
 
 // Each field always shows two digits and shifts left as you type, like a
@@ -157,13 +163,14 @@ function mountTimerCard(timer: TimerState) {
       <button class="icon-btn" data-role="delete" title="Delete timer">&times;</button>
     </div>
     <div class="clock">
-      <div class="hms">
+      <div class="hms" data-role="hms-input">
         <input class="clock-display" data-role="hours" inputmode="numeric" autocomplete="off" maxlength="2" value="${pad(timer.hours)}" />
         <span class="clock-sep">:</span>
         <input class="clock-display" data-role="minutes" inputmode="numeric" autocomplete="off" maxlength="2" value="${pad(timer.minutes)}" />
         <span class="clock-sep">:</span>
         <input class="clock-display" data-role="seconds" inputmode="numeric" autocomplete="off" maxlength="2" value="${pad(timer.seconds)}" />
       </div>
+      <div class="clock-text" data-role="hms-text" hidden></div>
     </div>
     <div class="last-finished" data-role="last-finished"></div>
     <div class="sound-row">
@@ -184,9 +191,11 @@ function mountTimerCard(timer: TimerState) {
   const refs: CardRefs = {
     root: card,
     nameInput: card.querySelector(".timer-name")!,
+    hmsInput: card.querySelector('[data-role="hms-input"]')!,
     hoursInput: card.querySelector('[data-role="hours"]')!,
     minutesInput: card.querySelector('[data-role="minutes"]')!,
     secondsInput: card.querySelector('[data-role="seconds"]')!,
+    hmsText: card.querySelector('[data-role="hms-text"]')!,
     lastFinished: card.querySelector('[data-role="last-finished"]')!,
     soundSelect: card.querySelector('[data-role="sound-select"]')!,
     startBtn: card.querySelector('[data-role="start"]')!,
@@ -226,28 +235,26 @@ function updateCardUI(timer: TimerState) {
 
   refs.root.dataset.status = timer.status
   refs.ringingBanner.hidden = timer.status !== "ringing"
-  const readOnly = timer.status !== "idle"
-  refs.hoursInput.readOnly = readOnly
-  refs.minutesInput.readOnly = readOnly
-  refs.secondsInput.readOnly = readOnly
-  refs.hoursInput.classList.toggle("running", timer.status === "running")
-  refs.minutesInput.classList.toggle("running", timer.status === "running")
-  refs.secondsInput.classList.toggle("running", timer.status === "running")
+
+  const isIdle = timer.status === "idle"
+  refs.hmsInput.hidden = !isIdle
+  refs.hmsText.hidden = isIdle
+  refs.hmsText.classList.toggle("running", timer.status === "running")
 
   if (timer.status === "idle") {
     setDurationFields(refs, timer)
     refs.startBtn.textContent = "Start"
     refs.startBtn.disabled = false
   } else if (timer.status === "paused") {
-    setDurationFields(refs, msToParts(timer.pausedRemainingMs ?? 0))
+    setDurationText(refs, msToParts(timer.pausedRemainingMs ?? 0))
     refs.startBtn.textContent = "Resume"
     refs.startBtn.disabled = false
   } else if (timer.status === "running" && timer.endAt !== null) {
-    setDurationFields(refs, msToParts(timer.endAt - Date.now()))
+    setDurationText(refs, msToParts(timer.endAt - Date.now()))
     refs.startBtn.textContent = "Pause"
     refs.startBtn.disabled = false
   } else if (timer.status === "ringing") {
-    setDurationFields(refs, { hours: 0, minutes: 0, seconds: 0 })
+    setDurationText(refs, { hours: 0, minutes: 0, seconds: 0 })
     refs.startBtn.disabled = true
     if (timer.finishedAt !== null) refs.finishedTime.textContent = formatClock(timer.finishedAt)
   }

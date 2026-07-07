@@ -133,6 +133,11 @@ body {
   gap: 0.05em;
 }
 
+.hms[hidden],
+.clock-text[hidden] {
+  display: none;
+}
+
 .clock-sep {
   font-variant-numeric: tabular-nums;
   font-size: clamp(2.4rem, 12vw, 3.2rem);
@@ -146,31 +151,34 @@ body {
   font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1;
-  width: 2ch;
+  width: 2.4ch;
+  min-width: 0;
   text-align: center;
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-bottom: 2px solid var(--face-dim);
   color: var(--face);
   font-family: inherit;
-  padding-bottom: 4px;
-}
-
-.clock-display:not([readonly]) {
-  border-bottom-color: var(--face-dim);
+  padding: 0 0 4px;
   cursor: text;
 }
 
-.clock-display:not([readonly]):focus {
+.clock-display:focus {
   outline: none;
   border-bottom-color: var(--accent);
 }
 
-.clock-display[readonly] {
-  cursor: default;
+.clock-text {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(2.4rem, 12vw, 3.2rem);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  color: var(--face);
+  padding-bottom: 6px;
 }
 
-.clock-display.running {
+.clock-text.running {
   color: var(--accent);
 }
 
