@@ -1,6 +1,7 @@
 const SIZE = 64
+const BG_COLOR = "#1a1a2e"
 const FACE_COLOR = "#f5f5f0"
-const RIM_COLOR = "#1a1a2e"
+const TICK_COLOR = "#1a1a2e"
 const HAND_COLOR = "#ff6b35"
 
 let canvas: HTMLCanvasElement | null = null
@@ -39,6 +40,39 @@ function setHref(href: string) {
   currentLink = next
 }
 
+// Mirrors the look of the static app icon (navy square, off-white face,
+// hour ticks) minus its two fixed hands, so the live progress hand is the
+// only thing that moves.
+function drawBase(c: CanvasRenderingContext2D) {
+  const mid = SIZE / 2
+  const faceR = SIZE * 0.4
+
+  c.clearRect(0, 0, SIZE, SIZE)
+  c.fillStyle = BG_COLOR
+  c.fillRect(0, 0, SIZE, SIZE)
+
+  c.beginPath()
+  c.arc(mid, mid, faceR, 0, Math.PI * 2)
+  c.fillStyle = FACE_COLOR
+  c.fill()
+
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2
+    const isMajor = i % 3 === 0
+    const rOuter = faceR * 0.92
+    const rInner = faceR * (isMajor ? 0.78 : 0.84)
+    c.beginPath()
+    c.moveTo(mid + rInner * Math.sin(angle), mid - rInner * Math.cos(angle))
+    c.lineTo(mid + rOuter * Math.sin(angle), mid - rOuter * Math.cos(angle))
+    c.lineWidth = isMajor ? SIZE * 0.03 : SIZE * 0.018
+    c.strokeStyle = TICK_COLOR
+    c.lineCap = "round"
+    c.stroke()
+  }
+
+  return { mid, faceR }
+}
+
 /** progress: 0-1 fraction through the run, or null to restore the static icon. */
 export function setFaviconProgress(progress: number | null) {
   ensureLink()
@@ -48,22 +82,13 @@ export function setFaviconProgress(progress: number | null) {
   }
 
   const c = getCanvasContext()
-  const mid = SIZE / 2
-  c.clearRect(0, 0, SIZE, SIZE)
-
-  c.beginPath()
-  c.arc(mid, mid, SIZE * 0.46, 0, Math.PI * 2)
-  c.fillStyle = FACE_COLOR
-  c.fill()
-  c.lineWidth = SIZE * 0.07
-  c.strokeStyle = RIM_COLOR
-  c.stroke()
+  const { mid, faceR } = drawBase(c)
 
   const angle = Math.max(0, Math.min(1, progress)) * Math.PI * 2 - Math.PI / 2
   c.beginPath()
   c.moveTo(mid, mid)
-  c.lineTo(mid + Math.cos(angle) * SIZE * 0.34, mid + Math.sin(angle) * SIZE * 0.34)
-  c.lineWidth = SIZE * 0.1
+  c.lineTo(mid + Math.cos(angle) * faceR * 0.78, mid + Math.sin(angle) * faceR * 0.78)
+  c.lineWidth = SIZE * 0.08
   c.lineCap = "round"
   c.strokeStyle = HAND_COLOR
   c.stroke()
