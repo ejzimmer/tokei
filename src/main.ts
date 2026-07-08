@@ -8,6 +8,7 @@ import {
   selectedDurationMs,
   type TimerState,
 } from "./timers"
+import { setFaviconProgress } from "./favicon"
 import {
   closeTimerNotification,
   getAudioContext,
@@ -287,6 +288,7 @@ function startTimer(timer: TimerState) {
   markTimerStarted()
   persist()
   updateCardUI(timer)
+  updateFavicon()
 }
 
 function pauseTimer(timer: TimerState) {
@@ -297,6 +299,7 @@ function pauseTimer(timer: TimerState) {
   markTimerStopped()
   persist()
   updateCardUI(timer)
+  updateFavicon()
 }
 
 function resetTimer(timer: TimerState) {
@@ -311,6 +314,7 @@ function resetTimer(timer: TimerState) {
   timer.finishedAt = null
   persist()
   updateCardUI(timer)
+  updateFavicon()
 }
 
 function stopAlarm(timer: TimerState) {
@@ -321,6 +325,7 @@ function stopAlarm(timer: TimerState) {
   timer.finishedAt = null
   persist()
   updateCardUI(timer)
+  updateFavicon()
 }
 
 function handleTimerFinished(timer: TimerState) {
@@ -333,6 +338,7 @@ function handleTimerFinished(timer: TimerState) {
   void notifyTimerFinished(timer.id, timer.name)
   persist()
   updateCardUI(timer)
+  updateFavicon()
 }
 
 function deleteTimer(id: string) {
@@ -348,6 +354,7 @@ function deleteTimer(id: string) {
   cardRefs.get(id)?.root.remove()
   cardRefs.delete(id)
   persist()
+  updateFavicon()
 }
 
 addTimerBtn.addEventListener("click", () => {
@@ -356,6 +363,22 @@ addTimerBtn.addEventListener("click", () => {
   mountTimerCard(timer)
   persist()
 })
+
+// The favicon can only show one clock, so if several timers are running at
+// once it tracks whichever is due to finish soonest.
+function updateFavicon() {
+  const running = timers.filter(
+    (t): t is TimerState & { endAt: number } => t.status === "running" && t.endAt !== null,
+  )
+  if (running.length === 0) {
+    setFaviconProgress(null)
+    return
+  }
+  const soonest = running.reduce((a, b) => (a.endAt < b.endAt ? a : b))
+  const total = selectedDurationMs(soonest)
+  const remaining = Math.max(0, soonest.endAt - Date.now())
+  setFaviconProgress(total > 0 ? 1 - remaining / total : 1)
+}
 
 function globalTick() {
   const now = Date.now()
@@ -368,6 +391,7 @@ function globalTick() {
       }
     }
   }
+  updateFavicon()
 }
 
 setInterval(globalTick, TICK_MS)
@@ -409,4 +433,5 @@ for (const timer of timers) {
   if (timer.status === "running") markTimerStarted()
   if (timer.status === "ringing") startAlarmLoop(timer.id, timer.soundId)
 }
+updateFavicon()
 renderStatus()
