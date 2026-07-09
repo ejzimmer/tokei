@@ -60,7 +60,7 @@ function stopKeepAliveTone() {
 
 export function previewSound(soundId: string) {
   const ctx = getAudioContext()
-  soundById(soundId).play(ctx, ctx.destination)
+  soundById(soundId).preview(ctx, ctx.destination)
 }
 
 export function startAlarmLoop(timerId: string, soundId: string) {
