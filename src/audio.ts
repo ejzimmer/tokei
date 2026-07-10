@@ -16,6 +16,10 @@ let keepAliveGain: GainNode | null = null
 let runningCount = 0
 
 const alarmLoops = new Map<string, ReturnType<typeof setInterval>>()
+// A whole alarm phrase is scheduled up front (all its notes get a future
+// start time in one go), so cancelling it mid-phrase means stopping every
+// oscillator it scheduled, not just clearing the interval that re-triggers it.
+const alarmOscillators = new Map<string, OscillatorNode[]>()
 
 export function getAudioContext(): AudioContext {
   if (!audioCtx) {
@@ -67,8 +71,11 @@ export function startAlarmLoop(timerId: string, soundId: string) {
   stopAlarmLoop(timerId)
   const ctx = getAudioContext()
   const sound = soundById(soundId)
-  sound.play(ctx, ctx.destination)
-  const handle = setInterval(() => sound.play(ctx, ctx.destination), sound.periodMs)
+  const playPhrase = () => {
+    alarmOscillators.set(timerId, sound.play(ctx, ctx.destination))
+  }
+  playPhrase()
+  const handle = setInterval(playPhrase, sound.periodMs)
   alarmLoops.set(timerId, handle)
   if (navigator.vibrate) navigator.vibrate(VIBRATE_PATTERN)
 }
@@ -77,6 +84,19 @@ export function stopAlarmLoop(timerId: string) {
   const handle = alarmLoops.get(timerId)
   if (handle) clearInterval(handle)
   alarmLoops.delete(timerId)
+
+  const oscillators = alarmOscillators.get(timerId)
+  if (oscillators) {
+    const now = getAudioContext().currentTime
+    for (const osc of oscillators) {
+      try {
+        osc.stop(now)
+      } catch {
+        // Already stopped — nothing to do.
+      }
+    }
+  }
+  alarmOscillators.delete(timerId)
 }
 
 export async function notifyTimerFinished(timerId: string, name: string) {

@@ -3,10 +3,19 @@ export interface ChimeSound {
   label: string
   /** How long to wait before repeating this chime while a timer is ringing. */
   periodMs: number
-  /** The full 10-15s alarm phrase, used while a timer is ringing. */
-  play: (ctx: AudioContext, destination: AudioNode) => void
+  /** The full 10-15s alarm phrase, used while a timer is ringing. Returns the
+   * oscillators it scheduled so the alarm can be cancelled mid-phrase. */
+  play: (ctx: AudioContext, destination: AudioNode) => OscillatorNode[]
   /** A single short ding, used for the "preview sound" button. */
-  preview: (ctx: AudioContext, destination: AudioNode) => void
+  preview: (ctx: AudioContext, destination: AudioNode) => OscillatorNode[]
+}
+
+interface NoteEvent {
+  atMs: number
+  freq: number
+  durationMs: number
+  gain: number
+  type: OscillatorType
 }
 
 function tone(
@@ -16,7 +25,7 @@ function tone(
   startTime: number,
   duration: number,
   opts: { type?: OscillatorType; gain?: number; attack?: number } = {},
-) {
+): OscillatorNode {
   const { type = "sine", gain = 0.3, attack = 0.012 } = opts
   const osc = ctx.createOscillator()
   const env = ctx.createGain()
@@ -28,93 +37,115 @@ function tone(
   osc.connect(env).connect(destination)
   osc.start(startTime)
   osc.stop(startTime + duration + 0.05)
+  return osc
 }
 
-// Repeats a short motif at a steady spacing to fill roughly 10-15 seconds
-// of alarm before the outer loop (see audio.ts) repeats the whole thing.
-function repeatMotif(
-  ctx: AudioContext,
-  dest: AudioNode,
-  motif: (ctx: AudioContext, dest: AudioNode, t: number) => void,
-  count: number,
-  spacing: number,
-) {
+function scheduleNotes(ctx: AudioContext, dest: AudioNode, notes: NoteEvent[]): OscillatorNode[] {
   const t0 = ctx.currentTime
-  for (let i = 0; i < count; i++) {
-    motif(ctx, dest, t0 + i * spacing)
+  return notes.map((n) => tone(ctx, dest, n.freq, t0 + n.atMs / 1000, n.durationMs / 1000, { gain: n.gain, type: n.type }))
+}
+
+function spanMs(notes: NoteEvent[]): number {
+  return Math.max(...notes.map((n) => n.atMs + n.durationMs))
+}
+
+function sequence(
+  freqs: number[],
+  opts: { spacingMs: number; durationMs: number; gain: number; type?: OscillatorType; offsetMs?: number },
+): NoteEvent[] {
+  const { spacingMs, durationMs, gain, type = "sine", offsetMs = 0 } = opts
+  return freqs.map((freq, i) => ({ atMs: offsetMs + i * spacingMs, freq, durationMs, gain, type }))
+}
+
+// A short riff repeated a few times (with a small gap at the end of each
+// repeat) so the pattern reads as one longer, evolving phrase rather than a
+// single note looping forever.
+function repeatedRiff(
+  freqs: number[],
+  opts: { spacingMs: number; durationMs: number; gain: number; type?: OscillatorType; riffPeriodMs: number; repeats: number },
+): NoteEvent[] {
+  const { riffPeriodMs, repeats, ...seqOpts } = opts
+  const notes: NoteEvent[] = []
+  for (let r = 0; r < repeats; r++) {
+    notes.push(...sequence(freqs, { ...seqOpts, offsetMs: r * riffPeriodMs }))
+  }
+  return notes
+}
+
+function bellStrikes(fundamentals: number[], spacingMs: number): NoteEvent[] {
+  const notes: NoteEvent[] = []
+  fundamentals.forEach((fundamental, i) => {
+    ;[1, 2.4, 3.8].forEach((mult, j) => {
+      notes.push({
+        atMs: i * spacingMs,
+        freq: fundamental * mult,
+        durationMs: 2000 - j * 350,
+        gain: 0.22 / (j + 1),
+        type: "sine",
+      })
+    })
+  })
+  return notes
+}
+
+const NOTE = {
+  G4: 392.0,
+  A4: 440.0,
+  C5: 523.25,
+  D5: 587.33,
+  E5: 659.25,
+  G5: 783.99,
+  A5: 880.0,
+  C6: 1046.5,
+  E6: 1318.51,
+  G6: 1567.98,
+}
+
+// A gentle up-and-down arpeggio, sine, slow enough that the ~11s phrase
+// clearly has a beginning, a peak, and a resolution back to the root.
+const chimeNotes = sequence([NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6, NOTE.G5, NOTE.E5, NOTE.C5], {
+  spacingMs: 1600,
+  durationMs: 1400,
+  gain: 0.24,
+})
+
+// Four widely-spaced strikes on a descending-then-returning set of
+// fundamentals, each with a long overtone decay — reads as a slow,
+// deliberate bell rather than a quick repeating ding.
+const bellNotes = bellStrikes([NOTE.E5, NOTE.C5, NOTE.G4, NOTE.C5], 3000)
+
+// A bouncy 8-note riff repeated a few times.
+const marimbaNotes = repeatedRiff(
+  [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6, NOTE.G5, NOTE.E5, NOTE.C5, NOTE.G4],
+  { spacingMs: 350, durationMs: 320, gain: 0.3, type: "triangle", riffPeriodMs: 3000, repeats: 4 },
+)
+
+// A brighter, quicker riff repeated more often to match its faster tempo.
+const xylophoneNotes = repeatedRiff([NOTE.G5, NOTE.C6, NOTE.E6, NOTE.G6, NOTE.E6, NOTE.C6], {
+  spacingMs: 220,
+  durationMs: 200,
+  gain: 0.28,
+  riffPeriodMs: 1500,
+  repeats: 8,
+})
+
+function makeSound(id: string, label: string, notes: NoteEvent[]): ChimeSound {
+  const previewNotes = notes.slice(0, 2)
+  const periodMs = spanMs(notes) + 400
+  return {
+    id,
+    label,
+    periodMs,
+    play: (ctx, dest) => scheduleNotes(ctx, dest, notes),
+    preview: (ctx, dest) => scheduleNotes(ctx, dest, previewNotes),
   }
 }
 
-function chimeMotif(ctx: AudioContext, dest: AudioNode, t: number) {
-  tone(ctx, dest, 1318.51, t, 0.9, { gain: 0.28 }) // E6
-  tone(ctx, dest, 1046.5, t + 0.12, 1.1, { gain: 0.28 }) // C6
-}
-
-function bellMotif(ctx: AudioContext, dest: AudioNode, t: number) {
-  const fundamental = 880
-  ;[1, 2.4, 3.8].forEach((mult, i) =>
-    tone(ctx, dest, fundamental * mult, t, 1.5 - i * 0.25, {
-      gain: 0.22 / (i + 1),
-      attack: 0.005,
-    }),
-  )
-}
-
-function marimbaMotif(ctx: AudioContext, dest: AudioNode, t: number) {
-  tone(ctx, dest, 523.25, t, 0.35, { type: "triangle", gain: 0.32 })
-  tone(ctx, dest, 659.25, t + 0.18, 0.35, { type: "triangle", gain: 0.32 })
-}
-
-function xylophoneMotif(ctx: AudioContext, dest: AudioNode, t: number) {
-  tone(ctx, dest, 1567.98, t, 0.22, { gain: 0.3 })
-  tone(ctx, dest, 2093, t + 0.1, 0.28, { gain: 0.26 })
-}
-
 export const SOUNDS: ChimeSound[] = [
-  {
-    id: "chime",
-    label: "Chime",
-    periodMs: 7 * 1800,
-    play(ctx, dest) {
-      repeatMotif(ctx, dest, chimeMotif, 7, 1.8)
-    },
-    preview(ctx, dest) {
-      chimeMotif(ctx, dest, ctx.currentTime)
-    },
-  },
-  {
-    id: "bell",
-    label: "Bell",
-    periodMs: 6 * 2200,
-    play(ctx, dest) {
-      repeatMotif(ctx, dest, bellMotif, 6, 2.2)
-    },
-    preview(ctx, dest) {
-      bellMotif(ctx, dest, ctx.currentTime)
-    },
-  },
-  {
-    id: "marimba",
-    label: "Marimba",
-    periodMs: 14 * 900,
-    play(ctx, dest) {
-      repeatMotif(ctx, dest, marimbaMotif, 14, 0.9)
-    },
-    preview(ctx, dest) {
-      marimbaMotif(ctx, dest, ctx.currentTime)
-    },
-  },
-  {
-    id: "xylophone",
-    label: "Xylophone",
-    periodMs: 18 * 700,
-    play(ctx, dest) {
-      repeatMotif(ctx, dest, xylophoneMotif, 18, 0.7)
-    },
-    preview(ctx, dest) {
-      xylophoneMotif(ctx, dest, ctx.currentTime)
-    },
-  },
+  makeSound("chime", "Chime", chimeNotes),
+  makeSound("bell", "Bell", bellNotes),
+  makeSound("marimba", "Marimba", marimbaNotes),
+  makeSound("xylophone", "Xylophone", xylophoneNotes),
 ]
 
 export function soundById(id: string): ChimeSound {
