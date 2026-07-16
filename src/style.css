@@ -182,7 +182,8 @@ body {
   color: var(--accent);
 }
 
-.last-finished {
+.last-finished,
+.run-count {
   min-height: 1.1em;
   text-align: center;
   font-size: 0.75rem;

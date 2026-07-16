@@ -9,6 +9,7 @@ import {
   type TimerState,
 } from "./timers"
 import { setFaviconProgress } from "./favicon"
+import { clearRunCount, getRunCount, recordRun } from "./runCounts"
 import {
   closeTimerNotification,
   getAudioContext,
@@ -36,6 +37,7 @@ interface CardRefs {
   secondsInput: HTMLInputElement
   hmsText: HTMLDivElement
   lastFinished: HTMLDivElement
+  runCount: HTMLDivElement
   soundSelect: HTMLSelectElement
   startBtn: HTMLButtonElement
   resetBtn: HTMLButtonElement
@@ -119,6 +121,7 @@ function bindDurationField(timer: TimerState, input: HTMLInputElement, field: Du
       updateCardUI(timer)
     } else if (e.key === "Enter") {
       input.blur()
+      startTimer(timer)
     } else if (!CONTROL_KEYS.has(e.key)) {
       e.preventDefault()
     }
@@ -174,6 +177,7 @@ function mountTimerCard(timer: TimerState) {
       <div class="clock-text" data-role="hms-text" hidden></div>
     </div>
     <div class="last-finished" data-role="last-finished"></div>
+    <div class="run-count" data-role="run-count"></div>
     <div class="sound-row">
       <select class="sound-select" data-role="sound-select">${soundOptions(timer.soundId)}</select>
       <button class="icon-btn" data-role="preview" title="Preview sound">&#9658;</button>
@@ -198,6 +202,7 @@ function mountTimerCard(timer: TimerState) {
     secondsInput: card.querySelector('[data-role="seconds"]')!,
     hmsText: card.querySelector('[data-role="hms-text"]')!,
     lastFinished: card.querySelector('[data-role="last-finished"]')!,
+    runCount: card.querySelector('[data-role="run-count"]')!,
     soundSelect: card.querySelector('[data-role="sound-select"]')!,
     startBtn: card.querySelector('[data-role="start"]')!,
     resetBtn: card.querySelector('[data-role="reset"]')!,
@@ -264,6 +269,10 @@ function updateCardUI(timer: TimerState) {
     timer.status !== "ringing" && timer.lastFinishedAt
       ? `Last finished at ${formatClock(timer.lastFinishedAt)}`
       : ""
+
+  const runCount = getRunCount(timer.id)
+  refs.runCount.textContent =
+    runCount === 0 ? "" : runCount === 1 ? "Run once today" : `Run ${runCount} times today`
 }
 
 function onStartPauseClick(timer: TimerState) {
@@ -277,6 +286,9 @@ function onStartPauseClick(timer: TimerState) {
 function startTimer(timer: TimerState) {
   const durationMs = timer.pausedRemainingMs ?? selectedDurationMs(timer)
   if (durationMs <= 0) return
+  // A resume from pause continues the same run; only a fresh start from
+  // idle counts as a new run of the timer.
+  const isFreshStart = timer.status === "idle"
   // Must happen inside this click handler: browsers only allow starting or
   // resuming an AudioContext in direct response to a user gesture.
   getAudioContext()
@@ -286,6 +298,7 @@ function startTimer(timer: TimerState) {
   timer.lastFinishedAt = null
   timer.status = "running"
   markTimerStarted()
+  if (isFreshStart) recordRun(timer.id)
   persist()
   updateCardUI(timer)
   updateFavicon()
@@ -353,6 +366,7 @@ function deleteTimer(id: string) {
   timers.splice(index, 1)
   cardRefs.get(id)?.root.remove()
   cardRefs.delete(id)
+  clearRunCount(id)
   persist()
   updateFavicon()
 }
