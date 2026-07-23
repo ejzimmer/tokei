@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tokei</string>
+    <string name="notification_channel_name">Timer alarms</string>
+    <string name="notification_channel_description">Sound and vibration when a Tokei timer finishes</string>
+    <string name="notification_stop_action">Stop</string>
+    <string name="notification_title_format">%1$s — time\'s up!</string>
+    <string name="notification_body">Tap Stop to silence the alarm.</string>
+</resources>
