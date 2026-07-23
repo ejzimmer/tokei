@@ -38,36 +38,40 @@ about up front:
    fire, just via an inexact alarm that the OS can delay by a few minutes
    under battery optimization.
 
-## Building it
+## Getting the APK — no Android Studio needed
 
-This was written entirely by hand in this sandboxed session, which has no
-access to the Android SDK or Google's Maven repository (the network policy
-here blocks `dl.google.com`), so **it could not be compiled or run here** —
-no emulator, no `./gradlew build`. Every file was written and reviewed
-carefully, but Android Studio's first sync is the real first compile.
+`.github/workflows/build-apk.yml` builds the app on every push to `main`
+(GitHub's own runners have the Android SDK preinstalled, so this needs
+nothing from you). To get the file:
+
+1. Open the repo on GitHub → **Actions** tab → the latest **Build debug
+   APK** run.
+2. Scroll to **Artifacts** and download `tokei-debug-apk` (a zip containing
+   `app-debug.apk`).
+3. Unzip it, copy `app-debug.apk` to your phone (email, cloud drive, USB —
+   whatever's easiest), and tap it to install. Android will ask you to
+   enable "install unknown apps" for whichever app you opened it with the
+   first time; that's expected.
+
+No Play Store, no signing service, no review — this is exactly the same
+sideloading path any personal APK uses. If you'd rather trigger a build
+manually instead of pushing a change, the Actions tab has a "Run workflow"
+button on this workflow (`workflow_dispatch`).
+
+## If you do want to build it yourself
+
+This was written entirely by hand in a sandboxed session with no access to
+the Android SDK or Google's Maven repository, so it was never compiled
+until the GitHub Actions workflow above ran it for the first time. If you
+have (or want) Android Studio locally:
 
 1. Install [Android Studio](https://developer.android.com/studio) (free).
-2. Open this folder as a project. Studio will download the Android SDK,
-   Gradle distribution, and dependencies automatically on first sync.
+2. Open this folder as a project — Studio downloads the SDK, Gradle, and
+   dependencies automatically on first sync.
 3. Connect your phone over USB with
    [USB debugging](https://developer.android.com/studio/debug/dev-options)
-   enabled, and hit Run — this installs and launches it directly.
+   enabled, and hit Run.
 
-If the first sync flags a dependency version as unavailable (`gradle/libs.versions.toml`
-pins specific AGP/Kotlin/Compose BOM versions as of late 2024), Studio's
-"Upgrade Assistant" will offer current ones — accept it, that's expected
-and not a sign anything else is wrong.
-
-## Installing without Android Studio (just a `.apk`)
-
-If you'd rather not set up Studio at all:
-
-```
-./gradlew assembleDebug
-```
-
-produces `app/build/outputs/apk/debug/app-debug.apk`. Copy that file to your
-phone (email, cloud drive, USB, whatever's easiest), enable "Install unknown
-apps" for whichever app you used to open it (Android will prompt you the
-first time), and tap the file to install. No Play Store, no signing service,
-no review — this is exactly the same sideloading path any personal APK uses.
+Or, with just a JDK and the Android command-line tools (no full IDE):
+`./gradlew assembleDebug` produces the same
+`app/build/outputs/apk/debug/app-debug.apk` that the CI workflow builds.
