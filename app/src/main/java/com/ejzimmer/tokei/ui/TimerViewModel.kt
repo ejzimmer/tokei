@@ -24,7 +24,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = TimerRepository(application)
     private val previewPlayer = AlarmPlayer()
 
-    private val _timers = MutableStateFlow(repository.load())
+    private val _timers = MutableStateFlow<List<TimerData>>(repository.load())
     val timers: StateFlow<List<TimerData>> = _timers.asStateFlow()
 
     // Bumped on every tick so Compose recomposes the live countdown text even
