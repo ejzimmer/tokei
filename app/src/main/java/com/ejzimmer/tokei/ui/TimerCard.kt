@@ -13,7 +13,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -97,7 +96,12 @@ fun TimerCard(
         SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(onClick = onReset) { Text("Reset") }
+            Button(
+                onClick = onReset,
+                colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
+            ) {
+                Text("Reset")
+            }
             Button(
                 onClick = onStartPause,
                 enabled = !isRinging,

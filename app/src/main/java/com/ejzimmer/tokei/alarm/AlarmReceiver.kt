@@ -14,7 +14,11 @@ class AlarmReceiver : BroadcastReceiver() {
         val timerId = intent.getStringExtra(EXTRA_TIMER_ID) ?: return
 
         val repository = TimerRepository(context)
-        val timers = repository.load()
+        // loadRaw(), not load(): load()'s own catch-up pass would see this
+        // same timer (endAt <= now, since the alarm is firing right now) and
+        // flip it to RINGING before we get a look, making the check below
+        // wrongly think someone already handled it.
+        val timers = repository.loadRaw()
         val timer = timers.find { it.id == timerId } ?: return
         // Already paused/reset/deleted since this alarm was scheduled.
         if (timer.status != TimerStatus.RUNNING) return

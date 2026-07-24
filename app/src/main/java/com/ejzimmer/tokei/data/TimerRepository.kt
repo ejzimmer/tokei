@@ -10,9 +10,13 @@ class TimerRepository(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private var nextSoundIndex = 0
 
-    /** Loads persisted timers, catching up any that finished while the app
-     * was completely killed (no live code was around to notice at the time). */
-    fun load(): MutableList<TimerData> {
+    /** Persisted timers exactly as stored, with no "catch up anything that
+     * finished while we weren't looking" pass. AlarmReceiver needs this: it
+     * IS the thing responsible for performing that exact transition when its
+     * alarm fires, and since the alarm fires at-or-after endAt, [load]'s
+     * catch-up would otherwise flip the timer to RINGING first and make
+     * AlarmReceiver think someone else already handled it. */
+    fun loadRaw(): MutableList<TimerData> {
         val raw = prefs.getString(KEY_TIMERS, null)
         val timers = if (raw == null) {
             mutableListOf(createTimer("Timer 1"))
@@ -21,7 +25,13 @@ class TimerRepository(context: Context) {
                 .getOrElse { mutableListOf(createTimer("Timer 1")) }
         }
         if (timers.isEmpty()) timers.add(createTimer("Timer 1"))
+        return timers
+    }
 
+    /** Loads persisted timers, catching up any that finished while the app
+     * was completely killed (no live code was around to notice at the time). */
+    fun load(): MutableList<TimerData> {
+        val timers = loadRaw()
         val now = System.currentTimeMillis()
         for (timer in timers) {
             val endAt = timer.endAtEpochMs
