@@ -70,8 +70,17 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun mutate(timerId: String, block: (TimerData) -> Unit) {
         val list = _timers.value.toMutableList()
-        val timer = list.find { it.id == timerId } ?: return
-        block(timer)
+        val index = list.indexOfFirst { it.id == timerId }
+        if (index == -1) return
+        // Mutate a fresh copy, not the object already sitting in _timers.value:
+        // TimerData's fields are var, so mutating the original in place would
+        // make the "old" and "new" list contents identical by the time
+        // StateFlow compares them, and it silently drops updates that look
+        // like no-ops -- which is exactly what looked like "typing does
+        // nothing" from the UI.
+        val copy = list[index].copy()
+        block(copy)
+        list[index] = copy
         _timers.value = list
         persist()
     }

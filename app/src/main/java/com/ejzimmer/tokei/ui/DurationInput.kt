@@ -1,16 +1,22 @@
 package com.ejzimmer.tokei.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -63,7 +69,11 @@ private fun DigitShiftField(
     onDigit: (DurationField, Int) -> Unit,
     onBackspace: (DurationField) -> Unit,
 ) {
-    TextField(
+    // A plain Material TextField reserves a lot of internal padding for a
+    // normal form field, which left almost no room for two bold 32sp digits
+    // at a sane width. BasicTextField has none of that chrome, so the box
+    // can stay compact and the digits still have room to breathe.
+    BasicTextField(
         value = value,
         onValueChange = { newValue ->
             val digits = newValue.filter { it.isDigit() }
@@ -73,7 +83,7 @@ private fun DigitShiftField(
                 // same length (e.g. no-op edit) -- ignore
             }
         },
-        modifier = Modifier.width(64.dp),
+        modifier = Modifier.width(72.dp),
         singleLine = true,
         textStyle = LocalTextStyle.current.copy(
             fontSize = 32.sp,
@@ -81,13 +91,25 @@ private fun DigitShiftField(
             textAlign = TextAlign.Center,
             color = Face,
         ),
+        cursorBrush = SolidColor(Accent),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = Color.Transparent,
-            unfocusedContainerColor = Color.Transparent,
-            focusedIndicatorColor = Accent,
-            unfocusedIndicatorColor = FaceDim,
-        ),
+        decorationBox = { innerTextField ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    innerTextField()
+                }
+                Spacer(Modifier.height(4.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .background(FaceDim),
+                )
+            }
+        },
     )
 }
 
