@@ -7,7 +7,7 @@
     android:tint="#FFFFFF">
     <!-- A simple ring. evenOdd (rather than relying on arc winding direction)
          makes this reliably render as an outline regardless of sweep-flag
-         subtleties -- this is the tiny monochrome status-bar icon, which
+         subtleties: this is the tiny monochrome status-bar icon, which
          Android re-tints to a single color anyway, so simplicity wins here. -->
     <path
         android:fillColor="#FF000000"
