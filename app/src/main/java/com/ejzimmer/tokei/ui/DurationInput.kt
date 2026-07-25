@@ -14,11 +14,17 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,10 +79,19 @@ private fun DigitShiftField(
     // normal form field, which left almost no room for two bold 32sp digits
     // at a sane width. BasicTextField has none of that chrome, so the box
     // can stay compact and the digits still have room to breathe.
+    //
+    // This is a shift-register keypad, not free-form text, so the cursor is
+    // forced back to the end on every change. Without that, tapping into the
+    // middle of "05" and typing left the digit inserted mid-string -- the
+    // shift logic below then read the OLD trailing digit as "what was typed".
+    var fieldValue by remember(value) {
+        mutableStateOf(TextFieldValue(text = value, selection = TextRange(value.length)))
+    }
     BasicTextField(
-        value = value,
+        value = fieldValue,
         onValueChange = { newValue ->
-            val digits = newValue.filter { it.isDigit() }
+            fieldValue = newValue.copy(selection = TextRange(newValue.text.length))
+            val digits = newValue.text.filter { it.isDigit() }
             when {
                 digits.length > 2 -> digits.last().digitToIntOrNull()?.let { onDigit(field, it) }
                 digits.length < 2 -> onBackspace(field)
