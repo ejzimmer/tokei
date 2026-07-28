@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -136,7 +137,17 @@ private fun Header(name: String, onRename: (String) -> Unit, onDelete: () -> Uni
         TextField(
             value = text,
             onValueChange = { text = it },
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .onFocusChanged { focusState ->
+                    // Only fall back to the default name once the user is
+                    // done editing, not on every keystroke -- otherwise
+                    // clearing the field to type a custom name immediately
+                    // snapped back to "Timer" before they could type it.
+                    if (!focusState.isFocused && text.isBlank()) {
+                        text = "Timer"
+                    }
+                },
             singleLine = true,
             textStyle = MaterialTheme.typography.titleMedium.copy(color = Face, fontWeight = FontWeight.Bold),
             colors = TextFieldDefaults.colors(

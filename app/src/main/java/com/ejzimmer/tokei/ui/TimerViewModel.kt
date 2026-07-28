@@ -102,7 +102,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         persist()
     }
 
-    fun rename(timerId: String, name: String) = mutate(timerId) { it.name = name.ifBlank { "Timer" } }
+    // Blank is allowed here: the UI decides when an empty name should fall
+    // back to "Timer" (on focus loss), not every debounced keystroke while
+    // the user is still mid-edit.
+    fun rename(timerId: String, name: String) = mutate(timerId) { it.name = name }
 
     fun setSound(timerId: String, soundId: String) = mutate(timerId) { it.soundId = soundId }
 
