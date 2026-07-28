@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.ejzimmer.tokei.alarm.AlarmEvents
 import com.ejzimmer.tokei.alarm.AlarmScheduler
 import com.ejzimmer.tokei.alarm.AlarmService
+import com.ejzimmer.tokei.alarm.CountdownNotifier
 import com.ejzimmer.tokei.audio.AlarmPlayer
 import com.ejzimmer.tokei.audio.soundById
 import com.ejzimmer.tokei.data.RunCounts
@@ -40,6 +41,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         // if we're also open so the UI updates immediately.
         viewModelScope.launch {
             AlarmEvents.timerFinished.collect { event ->
+                CountdownNotifier.cancel(getApplication<Application>(), event.timerId)
                 mutate(event.timerId) {
                     it.status = TimerStatus.RINGING
                     it.finishedAtEpochMs = event.finishedAtEpochMs
@@ -95,7 +97,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteTimer(timerId: String) {
         val timer = _timers.value.find { it.id == timerId } ?: return
         val context = getApplication<Application>()
-        if (timer.status == TimerStatus.RUNNING) AlarmScheduler.cancel(context, timerId)
+        if (timer.status == TimerStatus.RUNNING) {
+            AlarmScheduler.cancel(context, timerId)
+            CountdownNotifier.cancel(context, timerId)
+        }
         if (timer.status == TimerStatus.RINGING) AlarmService.stop(context, timerId)
         RunCounts.clear(timerId)
         _timers.value = _timers.value.filterNot { it.id == timerId }
@@ -140,13 +145,17 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             it.status = TimerStatus.RUNNING
         }
         if (isFreshStart) RunCounts.recordRun(timerId)
-        AlarmScheduler.schedule(getApplication<Application>(), timerId, endAt)
+        val context = getApplication<Application>()
+        AlarmScheduler.schedule(context, timerId, endAt)
+        CountdownNotifier.show(context, timerId, timer.name, endAt)
     }
 
     fun pause(timerId: String) {
         val timer = _timers.value.find { it.id == timerId } ?: return
         val endAt = timer.endAtEpochMs ?: return
-        AlarmScheduler.cancel(getApplication<Application>(), timerId)
+        val context = getApplication<Application>()
+        AlarmScheduler.cancel(context, timerId)
+        CountdownNotifier.cancel(context, timerId)
         mutate(timerId) {
             it.pausedRemainingMs = (endAt - System.currentTimeMillis()).coerceAtLeast(0L)
             it.endAtEpochMs = null
@@ -157,7 +166,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     fun reset(timerId: String) {
         val timer = _timers.value.find { it.id == timerId } ?: return
         val context = getApplication<Application>()
-        if (timer.status == TimerStatus.RUNNING) AlarmScheduler.cancel(context, timerId)
+        if (timer.status == TimerStatus.RUNNING) {
+            AlarmScheduler.cancel(context, timerId)
+            CountdownNotifier.cancel(context, timerId)
+        }
         if (timer.status == TimerStatus.RINGING) AlarmService.stop(context, timerId)
         mutate(timerId) {
             it.status = TimerStatus.IDLE

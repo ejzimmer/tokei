@@ -6,4 +6,7 @@
     <string name="notification_stop_action">Stop</string>
     <string name="notification_title_format">%1$s — time\'s up!</string>
     <string name="notification_body">Tap Stop to silence the alarm.</string>
+    <string name="notification_channel_name_countdown">Timer running</string>
+    <string name="notification_channel_description_countdown">Ongoing time-remaining notice while a Tokei timer counts down</string>
+    <string name="notification_countdown_body">Time remaining</string>
 </resources>

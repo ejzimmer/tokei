@@ -18,6 +18,7 @@ class BootReceiver : BroadcastReceiver() {
             val endAt = timer.endAtEpochMs
             if (timer.status == TimerStatus.RUNNING && endAt != null) {
                 AlarmScheduler.schedule(context, timer.id, endAt)
+                CountdownNotifier.show(context, timer.id, timer.name, endAt)
             }
         }
         repository.save(timers)

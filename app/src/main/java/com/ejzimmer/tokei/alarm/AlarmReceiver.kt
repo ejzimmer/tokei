@@ -31,6 +31,7 @@ class AlarmReceiver : BroadcastReceiver() {
         timer.endAtEpochMs = null
         repository.save(timers)
 
+        CountdownNotifier.cancel(context, timerId)
         AlarmService.start(context, timerId, timer.name, timer.soundId)
         AlarmEvents.notifyFinished(timerId, finishedAt)
     }
