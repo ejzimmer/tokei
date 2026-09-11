@@ -84,3 +84,15 @@ fun parseTimerList(json: String): List<TimerData> {
     val array = JSONArray(json)
     return (0 until array.length()).map { i -> TimerData.fromJson(array.getJSONObject(i)) }
 }
+
+val TimerData.isWorkTimer: Boolean get() = id == WORK_TIMER_ID
+
+/** Writes a millisecond remainder back into the h/m/s fields, which is where
+ * the work timer keeps its current cycle's remaining time while stopped (and
+ * therefore what the duration editor adjusts). */
+fun TimerData.setRemainingMs(ms: Long) {
+    val totalSeconds = ms.coerceAtLeast(0L) / 1000L
+    hours = (totalSeconds / 3600L).toInt()
+    minutes = ((totalSeconds % 3600L) / 60L).toInt()
+    seconds = (totalSeconds % 60L).toInt()
+}

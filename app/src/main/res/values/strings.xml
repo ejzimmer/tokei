@@ -9,4 +9,22 @@
     <string name="notification_channel_name_countdown">Timer running</string>
     <string name="notification_channel_description_countdown">Ongoing time-remaining notice while a Tokei timer counts down</string>
     <string name="notification_countdown_body">Time remaining</string>
+
+    <string name="notification_channel_name_work_cycle">Work day complete</string>
+    <string name="notification_channel_description_work_cycle">Fires when the work timer finishes a day\'s 7.5 hours and rolls into the next</string>
+    <string name="notification_channel_name_work_reminder">Work timer reminders</string>
+    <string name="notification_channel_description_work_reminder">Nudges when the work timer hasn\'t been started, or is still running late in the day</string>
+
+    <string name="work_cycle_title">7.5 hours done</string>
+    <string name="work_cycle_title_multiple">%1$d work days completed</string>
+    <string name="work_cycle_body_format">Now counting down %1$s\'s hours. %2$s still to work.</string>
+    <string name="work_cycle_body_plain">Now counting down the next day\'s hours.</string>
+
+    <string name="work_morning_title">Work timer not started</string>
+    <string name="work_morning_body_format">It\'s past 8:30 and the timer hasn\'t been started. %1$s left to work for %2$s.</string>
+    <string name="work_morning_body_plain">It\'s past 8:30 and the work timer hasn\'t been started.</string>
+
+    <string name="work_evening_title">Work timer still running</string>
+    <string name="work_evening_body_format">Did you forget to stop it? %1$s left of %2$s\'s hours.</string>
+    <string name="work_evening_body_plain">Did you forget to stop it?</string>
 </resources>

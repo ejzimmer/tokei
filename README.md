@@ -24,6 +24,35 @@ effort. This version instead uses:
 The sounds, duration-entry UX (three digit-shift hours/minutes/seconds
 fields), and daily run count are carried over from the web version's design.
 
+## The Work timer
+
+A fixed timer pinned to the top of the list, for tracking a Tuesday-to-Friday
+work week of 7.5-hour days. Unlike the other timers it doesn't ring and stop
+at zero -- it books the finished day and rolls straight into the next one, so
+it can run continuously through a long day.
+
+- **It counts toward a specific day.** The card always says which one
+  ("Counting down Wednesday's hours"). Pass 7.5 hours on Tuesday and the
+  overflow starts counting toward Wednesday; stop 2.5 hours short and
+  Wednesday starts by finishing Tuesday off before Wednesday's own 7.5
+  begins. You can be several days ahead or behind either way.
+- **A day you never start it is a day off.** Days only start owing hours when
+  the timer is actually started on them, so a skipped day costs nothing and
+  the running total simply carries over -- 5 hours on Tuesday and nothing on
+  Wednesday leaves 10 hours to work on Thursday, not 17.5.
+- **Stop and start freely.** Stopping banks what's left of the cycle rather
+  than discarding it. While stopped the duration is editable, so forgetting
+  to start or stop is fixed by correcting the number. An adjustment applies
+  to the cycle you're in; every later cycle is a full 7.5 hours again.
+- **Two nudges.** Not started by 8:30 on a Tuesday-to-Friday sends a
+  reminder; the weekend and Monday are skipped outright. Still running at
+  18:30 asks whether you forgot to stop -- that one has no day filter
+  because it only speaks up when the timer is genuinely counting, so a day
+  off stays quiet on its own.
+
+The schedule lives in `data/WorkSchedule.kt` (work days, cycle length, both
+reminder times) and the day-by-day ledger in `data/WorkState.kt`.
+
 ## Before you build: two permissions to grant on your phone
 
 The app will prompt for both on first launch, but they're worth knowing

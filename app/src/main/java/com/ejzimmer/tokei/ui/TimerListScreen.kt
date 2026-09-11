@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ejzimmer.tokei.data.RunCounts
 import com.ejzimmer.tokei.data.TimerStatus
+import com.ejzimmer.tokei.data.isWorkTimer
+import java.time.LocalDate
 
 @Composable
 fun TimerListScreen(
@@ -30,6 +32,7 @@ fun TimerListScreen(
 ) {
     val timers by viewModel.timers.collectAsState()
     val nowMs by viewModel.clockTick.collectAsState()
+    val workState by viewModel.workState.collectAsState()
 
     Surface(modifier = Modifier.fillMaxSize(), color = Background) {
         Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
@@ -63,6 +66,19 @@ fun TimerListScreen(
                 items(timers, key = { it.id }) { timer ->
                     TimerCard(
                         timer = timer,
+                        workInfo = if (timer.isWorkTimer) {
+                            workCardInfo(
+                                state = workState,
+                                today = LocalDate.now(),
+                                remainingMs = if (timer.status == TimerStatus.RUNNING) {
+                                    ((timer.endAtEpochMs ?: nowMs) - nowMs).coerceAtLeast(0L)
+                                } else {
+                                    timer.durationMs()
+                                },
+                            )
+                        } else {
+                            null
+                        },
                         runCount = RunCounts.getRunCount(timer.id),
                         nowMs = nowMs,
                         onRename = { viewModel.rename(timer.id, it) },

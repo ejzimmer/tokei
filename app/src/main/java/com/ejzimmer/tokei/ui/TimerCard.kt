@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ejzimmer.tokei.audio.SOUNDS
@@ -52,6 +53,7 @@ fun TimerCard(
     onStartPause: () -> Unit,
     onReset: () -> Unit,
     onStopAlarm: () -> Unit,
+    workInfo: WorkCardInfo? = null,
 ) {
     val isRinging = timer.status == TimerStatus.RINGING
     val borderColor = when (timer.status) {
@@ -69,7 +71,20 @@ fun TimerCard(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Header(name = timer.name, onRename = onRename, onDelete = onDelete)
+        if (workInfo == null) {
+            Header(name = timer.name, onRename = onRename, onDelete = onDelete)
+        } else {
+            // Fixed name, no delete: this one is part of the app rather than
+            // a timer you made.
+            Text(
+                timer.name,
+                color = Face,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            )
+        }
 
         if (timer.status == TimerStatus.IDLE) {
             EditableDurationFields(timer.hours, timer.minutes, timer.seconds, onDigit, onBackspace)
@@ -78,15 +93,32 @@ fun TimerCard(
             ReadOnlyDuration(h, m, s, accent = timer.status == TimerStatus.RUNNING)
         }
 
+        if (workInfo != null) {
+            Text(
+                workInfo.headline,
+                color = Accent,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+            workInfo.details.forEach { detail ->
+                Text(detail, color = FaceDim, fontSize = 12.sp, textAlign = TextAlign.Center)
+            }
+        }
+
         if (!isRinging && timer.lastFinishedAtEpochMs != null) {
             Text(
-                "Last finished at ${formatClockTime(timer.lastFinishedAtEpochMs!!)}",
+                if (workInfo == null) {
+                    "Last finished at ${formatClockTime(timer.lastFinishedAtEpochMs!!)}"
+                } else {
+                    "Last cycle finished at ${formatClockTime(timer.lastFinishedAtEpochMs!!)}"
+                },
                 color = FaceDim,
                 fontSize = 12.sp,
             )
         }
 
-        if (runCount > 0) {
+        if (workInfo == null && runCount > 0) {
             Text(
                 if (runCount == 1) "Run once today" else "Run $runCount times today",
                 color = FaceDim,
@@ -94,21 +126,25 @@ fun TimerCard(
             )
         }
 
-        SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
+        // The work timer never rings and waits to be silenced -- it rolls
+        // straight into the next cycle -- so there's no alarm sound to pick.
+        if (workInfo == null) {
+            SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
+        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(
                 onClick = onReset,
                 colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
             ) {
-                Text("Reset")
+                Text(if (workInfo == null) "Reset" else "Reset to 7:30")
             }
             Button(
                 onClick = onStartPause,
                 enabled = !isRinging,
                 colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Background),
             ) {
-                Text(startPauseLabel(timer.status))
+                Text(startPauseLabel(timer.status, isWork = workInfo != null))
             }
         }
 
@@ -198,10 +234,13 @@ private fun SoundRow(soundId: String, onSoundChange: (String) -> Unit, onPreview
     }
 }
 
-private fun startPauseLabel(status: TimerStatus): String = when (status) {
+// The work timer drops back to IDLE when stopped rather than PAUSED, so that
+// its duration fields stay editable -- "Stop" then "Start" is also how you
+// correct the time after forgetting to do either.
+private fun startPauseLabel(status: TimerStatus, isWork: Boolean): String = when (status) {
     TimerStatus.IDLE -> "Start"
     TimerStatus.PAUSED -> "Resume"
-    TimerStatus.RUNNING -> "Pause"
+    TimerStatus.RUNNING -> if (isWork) "Stop" else "Pause"
     TimerStatus.RINGING -> "Pause"
 }
 
