@@ -7,17 +7,28 @@ import com.ejzimmer.tokei.alarm.AlarmEvents
 import com.ejzimmer.tokei.alarm.AlarmScheduler
 import com.ejzimmer.tokei.alarm.AlarmService
 import com.ejzimmer.tokei.alarm.CountdownNotifier
+import com.ejzimmer.tokei.alarm.WorkReminderScheduler
 import com.ejzimmer.tokei.audio.AlarmPlayer
 import com.ejzimmer.tokei.audio.soundById
 import com.ejzimmer.tokei.data.RunCounts
 import com.ejzimmer.tokei.data.TimerData
 import com.ejzimmer.tokei.data.TimerRepository
 import com.ejzimmer.tokei.data.TimerStatus
+import com.ejzimmer.tokei.data.WORK_TIMER_ID
+import com.ejzimmer.tokei.data.WorkSchedule
+import com.ejzimmer.tokei.data.WorkState
+import com.ejzimmer.tokei.data.claimedForStart
+import com.ejzimmer.tokei.data.cycleCompleted
+import com.ejzimmer.tokei.data.isWorkTimer
+import com.ejzimmer.tokei.data.localDateOf
+import com.ejzimmer.tokei.data.reconciled
+import com.ejzimmer.tokei.data.setRemainingMs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 enum class DurationField { HOURS, MINUTES, SECONDS }
 
@@ -33,8 +44,13 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     private val _clockTick = MutableStateFlow(0L)
     val clockTick: StateFlow<Long> = _clockTick.asStateFlow()
 
+    private val _workState = MutableStateFlow(repository.loadWorkState())
+    val workState: StateFlow<WorkState> = _workState.asStateFlow()
+
     init {
+        catchUpWork()
         persist()
+        WorkReminderScheduler.scheduleAll(application)
 
         // AlarmReceiver is the single authority for "this timer just
         // finished" -- it always persists the transition, and tells us here
@@ -61,9 +77,26 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         viewModelScope.launch {
+            AlarmEvents.workChanged.collect {
+                // AlarmReceiver already wrote both halves of the rollover to
+                // disk; re-read rather than trying to replay it here.
+                _timers.value = repository.loadRaw()
+                _workState.value = repository.loadWorkState()
+            }
+        }
+        viewModelScope.launch {
+            var lastDay = LocalDate.now().toEpochDay()
             while (true) {
                 delay(250)
                 _clockTick.value = System.currentTimeMillis()
+
+                // Crossing midnight can retire a work day that was never
+                // worked, which changes which day the timer is counting for.
+                val today = LocalDate.now().toEpochDay()
+                if (today != lastDay) {
+                    lastDay = today
+                    catchUpWork()
+                }
             }
         }
     }
@@ -89,13 +122,15 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addTimer() {
         val list = _timers.value.toMutableList()
-        list.add(repository.createTimer("Timer ${list.size + 1}"))
+        list.add(repository.createTimer("Timer ${list.count { !it.isWorkTimer } + 1}"))
         _timers.value = list
         persist()
     }
 
     fun deleteTimer(timerId: String) {
         val timer = _timers.value.find { it.id == timerId } ?: return
+        // The work timer is part of the app, not a timer you made.
+        if (timer.isWorkTimer) return
         val context = getApplication<Application>()
         if (timer.status == TimerStatus.RUNNING) {
             AlarmScheduler.cancel(context, timerId)
@@ -118,20 +153,40 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         previewPlayer.playOnce(soundById(soundId).previewNotes)
     }
 
-    fun enterDigit(timerId: String, field: DurationField, digit: Int) = mutate(timerId) { timer ->
-        if (timer.status != TimerStatus.IDLE) return@mutate
-        val current = timer.fieldValue(field)
-        timer.setFieldValue(field, (current * 10 + digit) % 100)
-        timer.normalize()
+    fun enterDigit(timerId: String, field: DurationField, digit: Int) {
+        mutate(timerId) { timer ->
+            if (timer.status != TimerStatus.IDLE) return@mutate
+            val current = timer.fieldValue(field)
+            timer.setFieldValue(field, (current * 10 + digit) % 100)
+            timer.normalize()
+        }
+        syncWorkRemainingFromDigits(timerId)
     }
 
-    fun backspaceDigit(timerId: String, field: DurationField) = mutate(timerId) { timer ->
-        if (timer.status != TimerStatus.IDLE) return@mutate
-        timer.setFieldValue(field, timer.fieldValue(field) / 10)
-        timer.normalize()
+    fun backspaceDigit(timerId: String, field: DurationField) {
+        mutate(timerId) { timer ->
+            if (timer.status != TimerStatus.IDLE) return@mutate
+            timer.setFieldValue(field, timer.fieldValue(field) / 10)
+            timer.normalize()
+        }
+        syncWorkRemainingFromDigits(timerId)
+    }
+
+    /** For the work timer the duration fields *are* the current cycle's
+     * remaining time, so editing them is how "I forgot to start/stop it" gets
+     * corrected. Later cycles are untouched -- they're always a full 7.5
+     * hours, held separately in the ledger. */
+    private fun syncWorkRemainingFromDigits(timerId: String) {
+        if (timerId != WORK_TIMER_ID) return
+        val timer = _timers.value.find { it.isWorkTimer } ?: return
+        // Only meaningful while stopped; mid-countdown the fields are a stale
+        // snapshot and copying them into the ledger would lose real time.
+        if (timer.status != TimerStatus.IDLE) return
+        setWorkState(_workState.value.copy(headRemainingMs = timer.durationMs()))
     }
 
     fun start(timerId: String) {
+        if (timerId == WORK_TIMER_ID) return startWork()
         val timer = _timers.value.find { it.id == timerId } ?: return
         val durationMs = timer.pausedRemainingMs ?: timer.durationMs()
         if (durationMs <= 0) return
@@ -151,6 +206,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun pause(timerId: String) {
+        if (timerId == WORK_TIMER_ID) return pauseWork()
         val timer = _timers.value.find { it.id == timerId } ?: return
         val endAt = timer.endAtEpochMs ?: return
         val context = getApplication<Application>()
@@ -164,6 +220,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun reset(timerId: String) {
+        if (timerId == WORK_TIMER_ID) return resetWork()
         val timer = _timers.value.find { it.id == timerId } ?: return
         val context = getApplication<Application>()
         if (timer.status == TimerStatus.RUNNING) {
@@ -187,6 +244,125 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 it.finishedAtEpochMs = null
             }
         }
+    }
+
+    // -- Work timer ---------------------------------------------------------
+
+    private fun setWorkState(state: WorkState) {
+        _workState.value = state
+        repository.saveWorkState(state)
+    }
+
+    /**
+     * Starting the work timer is also what claims today as a work day, which
+     * is the whole mechanism behind "a day you never start it is a day off":
+     * an untouched day simply never adds its 7.5 hours to the ledger.
+     */
+    private fun startWork() {
+        val timer = _timers.value.find { it.isWorkTimer } ?: return
+        // While stopped, the duration fields are the live remaining time --
+        // including any adjustment just typed into them.
+        val remaining = timer.durationMs().takeIf { it > 0L } ?: WorkSchedule.CYCLE_MS
+        val state = _workState.value
+            .copy(headRemainingMs = remaining)
+            .claimedForStart(LocalDate.now())
+        setWorkState(state)
+
+        val endAt = System.currentTimeMillis() + state.headRemainingMs
+        mutate(timer.id) {
+            it.endAtEpochMs = endAt
+            it.pausedRemainingMs = null
+            it.status = TimerStatus.RUNNING
+            it.setRemainingMs(state.headRemainingMs)
+        }
+
+        val context = getApplication<Application>()
+        AlarmScheduler.schedule(context, timer.id, endAt)
+        CountdownNotifier.show(context, timer.id, timer.name, endAt)
+    }
+
+    /**
+     * Stopping banks what's left of the cycle rather than discarding it, and
+     * drops back to IDLE rather than PAUSED so the duration fields become
+     * editable again -- for this timer, "resume" and "adjust then start" are
+     * the same gesture.
+     */
+    private fun pauseWork() {
+        val timer = _timers.value.find { it.isWorkTimer } ?: return
+        val endAt = timer.endAtEpochMs ?: return
+        val context = getApplication<Application>()
+        AlarmScheduler.cancel(context, timer.id)
+        CountdownNotifier.cancel(context, timer.id)
+
+        val remaining = (endAt - System.currentTimeMillis()).coerceAtLeast(0L)
+        setWorkState(_workState.value.copy(headRemainingMs = remaining))
+        mutate(timer.id) {
+            it.status = TimerStatus.IDLE
+            it.endAtEpochMs = null
+            it.pausedRemainingMs = null
+            it.setRemainingMs(remaining)
+        }
+    }
+
+    /** Puts this cycle back to a full 7.5 hours without touching which day
+     * it counts for, or any day queued behind it. */
+    private fun resetWork() {
+        val timer = _timers.value.find { it.isWorkTimer } ?: return
+        val context = getApplication<Application>()
+        if (timer.status == TimerStatus.RUNNING) {
+            AlarmScheduler.cancel(context, timer.id)
+            CountdownNotifier.cancel(context, timer.id)
+        }
+        setWorkState(_workState.value.copy(headRemainingMs = WorkSchedule.CYCLE_MS))
+        mutate(timer.id) {
+            it.status = TimerStatus.IDLE
+            it.endAtEpochMs = null
+            it.pausedRemainingMs = null
+            it.setRemainingMs(WorkSchedule.CYCLE_MS)
+        }
+    }
+
+    /**
+     * Brings the ledger up to date on open and at each midnight: retires days
+     * that went by unworked, and books any cycle boundaries that passed while
+     * nothing was around to notice (AlarmReceiver normally gets there first,
+     * but it can be missed if alarms were blocked or the app was reinstalled).
+     */
+    private fun catchUpWork() {
+        val timer = _timers.value.find { it.isWorkTimer } ?: return
+        val today = LocalDate.now()
+        val endAt = timer.endAtEpochMs
+
+        if (timer.status != TimerStatus.RUNNING || endAt == null) {
+            setWorkState(_workState.value.reconciled(today))
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        if (endAt > now) return
+
+        var state = _workState.value
+        var boundary = endAt
+        var completed = 0
+        do {
+            state = state.cycleCompleted(localDateOf(boundary))
+            boundary += state.headRemainingMs
+            completed++
+        } while (boundary <= now && completed < MAX_CATCH_UP_CYCLES)
+
+        setWorkState(state)
+        val newEndAt = boundary
+        mutate(timer.id) {
+            it.endAtEpochMs = newEndAt
+            it.setRemainingMs(state.headRemainingMs)
+        }
+        val context = getApplication<Application>()
+        AlarmScheduler.schedule(context, timer.id, newEndAt)
+        CountdownNotifier.show(context, timer.id, timer.name, newEndAt)
+    }
+
+    private companion object {
+        const val MAX_CATCH_UP_CYCLES = 32
     }
 }
 

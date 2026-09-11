@@ -13,8 +13,12 @@ import android.os.Build
 object AlarmScheduler {
 
     fun schedule(context: Context, timerId: String, triggerAtEpochMs: Long) {
+        setAlarm(context, triggerAtEpochMs, alarmPendingIntent(context, timerId))
+    }
+
+    /** Shared by the timer alarms and the work timer's daily reminders. */
+    fun setAlarm(context: Context, triggerAtEpochMs: Long, pendingIntent: PendingIntent) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val pendingIntent = alarmPendingIntent(context, timerId)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
             // The user hasn't granted the exact-alarm permission (should have

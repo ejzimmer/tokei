@@ -21,11 +21,22 @@ object AlarmEvents {
     private val _timerStopped = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val timerStopped = _timerStopped.asSharedFlow()
 
+    private val _workChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    val workChanged = _workChanged.asSharedFlow()
+
     fun notifyFinished(timerId: String, finishedAtEpochMs: Long) {
         _timerFinished.tryEmit(Finished(timerId, finishedAtEpochMs))
     }
 
     fun notifyStopped(timerId: String) {
         _timerStopped.tryEmit(timerId)
+    }
+
+    /** The work timer rolled into its next cycle. It carries no payload on
+     * purpose: the ledger has just been written to disk, and re-reading it is
+     * both simpler and safer than trying to replay the same transition in the
+     * ViewModel. */
+    fun notifyWorkChanged() {
+        _workChanged.tryEmit(Unit)
     }
 }

@@ -5,6 +5,7 @@ import com.ejzimmer.tokei.audio.SOUNDS
 
 private const val PREFS_NAME = "tokei_timers"
 private const val KEY_TIMERS = "timers_json"
+private const val KEY_WORK_STATE = "work_state_json"
 
 class TimerRepository(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -25,7 +26,27 @@ class TimerRepository(context: Context) {
                 .getOrElse { mutableListOf(createTimer("Timer 1")) }
         }
         if (timers.isEmpty()) timers.add(createTimer("Timer 1"))
+        return ensureWorkTimer(timers)
+    }
+
+    /** The work timer always exists and always sits at the top of the list. */
+    private fun ensureWorkTimer(timers: MutableList<TimerData>): MutableList<TimerData> {
+        val index = timers.indexOfFirst { it.id == WORK_TIMER_ID }
+        when {
+            index == -1 -> timers.add(0, createWorkTimer())
+            index != 0 -> timers.add(0, timers.removeAt(index))
+        }
         return timers
+    }
+
+    private fun createWorkTimer(): TimerData {
+        val timer = TimerData(
+            id = WORK_TIMER_ID,
+            name = WORK_TIMER_NAME,
+            soundId = SOUNDS.first().id,
+        )
+        timer.setRemainingMs(WorkSchedule.CYCLE_MS)
+        return timer
     }
 
     /** Loads persisted timers, catching up any that finished while the app
@@ -34,6 +55,11 @@ class TimerRepository(context: Context) {
         val timers = loadRaw()
         val now = System.currentTimeMillis()
         for (timer in timers) {
+            // The work timer deliberately isn't caught up here: it doesn't
+            // stop at zero, it rolls into the next day's cycle, which needs
+            // the ledger too. AlarmReceiver (or the ViewModel on open) does
+            // that properly.
+            if (timer.isWorkTimer) continue
             val endAt = timer.endAtEpochMs
             if (timer.status == TimerStatus.RUNNING && endAt != null && endAt <= now) {
                 timer.status = TimerStatus.RINGING
@@ -46,6 +72,15 @@ class TimerRepository(context: Context) {
 
     fun save(timers: List<TimerData>) {
         prefs.edit().putString(KEY_TIMERS, timers.toJsonString()).apply()
+    }
+
+    fun loadWorkState(): WorkState {
+        val raw = prefs.getString(KEY_WORK_STATE, null) ?: return WorkState()
+        return WorkState.parse(raw)
+    }
+
+    fun saveWorkState(state: WorkState) {
+        prefs.edit().putString(KEY_WORK_STATE, state.toJson().toString()).apply()
     }
 
     fun createTimer(name: String): TimerData {

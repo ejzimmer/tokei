@@ -22,5 +22,9 @@ class BootReceiver : BroadcastReceiver() {
             }
         }
         repository.save(timers)
+
+        // The work timer's daily nudges are ordinary alarms too, so they
+        // don't survive a reboot either.
+        WorkReminderScheduler.scheduleAll(context)
     }
 }
