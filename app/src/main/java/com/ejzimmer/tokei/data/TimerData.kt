@@ -6,11 +6,24 @@ import java.util.UUID
 
 enum class TimerStatus { IDLE, RUNNING, PAUSED, RINGING }
 
+/** Which half of a pomodoro cycle a timer is currently in. Irrelevant for a
+ * plain (non-pomodoro) timer, which always behaves as if it were WORK. */
+enum class PomodoroPhase { WORK, REST }
+
+fun PomodoroPhase.next(): PomodoroPhase = when (this) {
+    PomodoroPhase.WORK -> PomodoroPhase.REST
+    PomodoroPhase.REST -> PomodoroPhase.WORK
+}
+
 /**
  * One timer's full state. hours/minutes/seconds are the *configured* duration
  * and never change while running/paused/ringing -- endAtEpochMs and
  * pausedRemainingMs track the live countdown separately, mirroring the
  * original web version's model.
+ *
+ * A pomodoro timer reuses hours/minutes/seconds as its *work* duration and
+ * adds a separate rest duration, alternating between the two via [phase]
+ * every time it rings and is dismissed.
  */
 data class TimerData(
     val id: String = UUID.randomUUID().toString(),
@@ -24,10 +37,23 @@ data class TimerData(
     var pausedRemainingMs: Long? = null,
     var finishedAtEpochMs: Long? = null,
     var lastFinishedAtEpochMs: Long? = null,
+    var isPomodoro: Boolean = false,
+    var restHours: Int = 0,
+    var restMinutes: Int = 5,
+    var restSeconds: Int = 0,
+    var phase: PomodoroPhase = PomodoroPhase.WORK,
 ) {
-    fun durationMs(): Long = ((hours * 60L + minutes) * 60L + seconds) * 1000L
+    fun durationMs(): Long {
+        val useRest = isPomodoro && phase == PomodoroPhase.REST
+        val h = if (useRest) restHours else hours
+        val m = if (useRest) restMinutes else minutes
+        val s = if (useRest) restSeconds else seconds
+        return ((h * 60L + m) * 60L + s) * 1000L
+    }
 
-    /** Carries overflowing seconds into minutes, and overflowing minutes into hours. */
+    /** Carries overflowing seconds into minutes, and overflowing minutes into
+     * hours -- for both the work and rest fields, since a pomodoro timer can
+     * have either one being edited. */
     fun normalize() {
         if (seconds >= 60) {
             minutes += seconds / 60
@@ -36,6 +62,14 @@ data class TimerData(
         if (minutes >= 60) {
             hours += minutes / 60
             minutes %= 60
+        }
+        if (restSeconds >= 60) {
+            restMinutes += restSeconds / 60
+            restSeconds %= 60
+        }
+        if (restMinutes >= 60) {
+            restHours += restMinutes / 60
+            restMinutes %= 60
         }
     }
 
@@ -51,6 +85,11 @@ data class TimerData(
         put("pausedRemainingMs", pausedRemainingMs ?: JSONObject.NULL)
         put("finishedAtEpochMs", finishedAtEpochMs ?: JSONObject.NULL)
         put("lastFinishedAtEpochMs", lastFinishedAtEpochMs ?: JSONObject.NULL)
+        put("isPomodoro", isPomodoro)
+        put("restHours", restHours)
+        put("restMinutes", restMinutes)
+        put("restSeconds", restSeconds)
+        put("phase", phase.name)
     }
 
     companion object {
@@ -67,6 +106,12 @@ data class TimerData(
             pausedRemainingMs = json.optLongOrNull("pausedRemainingMs"),
             finishedAtEpochMs = json.optLongOrNull("finishedAtEpochMs"),
             lastFinishedAtEpochMs = json.optLongOrNull("lastFinishedAtEpochMs"),
+            isPomodoro = json.optBoolean("isPomodoro", false),
+            restHours = json.optInt("restHours", 0),
+            restMinutes = json.optInt("restMinutes", 5),
+            restSeconds = json.optInt("restSeconds", 0),
+            phase = runCatching { PomodoroPhase.valueOf(json.getString("phase")) }
+                .getOrDefault(PomodoroPhase.WORK),
         )
     }
 }

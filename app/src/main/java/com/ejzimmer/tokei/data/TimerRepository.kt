@@ -83,9 +83,24 @@ class TimerRepository(context: Context) {
         prefs.edit().putString(KEY_WORK_STATE, state.toJson().toString()).apply()
     }
 
-    fun createTimer(name: String): TimerData {
+    fun createTimer(name: String, isPomodoro: Boolean = false): TimerData {
         val sound = SOUNDS[nextSoundIndex % SOUNDS.size]
         nextSoundIndex++
-        return TimerData(name = name, soundId = sound.id)
+        return if (isPomodoro) {
+            // Classic pomodoro defaults: 25 minutes work, 5 minutes rest.
+            TimerData(
+                name = name,
+                soundId = sound.id,
+                hours = 0,
+                minutes = 25,
+                seconds = 0,
+                isPomodoro = true,
+                restHours = 0,
+                restMinutes = 5,
+                restSeconds = 0,
+            )
+        } else {
+            TimerData(name = name, soundId = sound.id)
+        }
     }
 }

@@ -10,6 +10,7 @@ import com.ejzimmer.tokei.alarm.CountdownNotifier
 import com.ejzimmer.tokei.alarm.WorkReminderScheduler
 import com.ejzimmer.tokei.audio.AlarmPlayer
 import com.ejzimmer.tokei.audio.soundById
+import com.ejzimmer.tokei.data.PomodoroPhase
 import com.ejzimmer.tokei.data.RunCounts
 import com.ejzimmer.tokei.data.TimerData
 import com.ejzimmer.tokei.data.TimerRepository
@@ -21,6 +22,7 @@ import com.ejzimmer.tokei.data.claimedForStart
 import com.ejzimmer.tokei.data.cycleCompleted
 import com.ejzimmer.tokei.data.isWorkTimer
 import com.ejzimmer.tokei.data.localDateOf
+import com.ejzimmer.tokei.data.next
 import com.ejzimmer.tokei.data.reconciled
 import com.ejzimmer.tokei.data.setRemainingMs
 import kotlinx.coroutines.delay
@@ -120,9 +122,14 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         persist()
     }
 
-    fun addTimer() {
+    fun addTimer(isPomodoro: Boolean = false) {
         val list = _timers.value.toMutableList()
-        list.add(repository.createTimer("Timer ${list.count { !it.isWorkTimer } + 1}"))
+        val name = if (isPomodoro) {
+            "Pomodoro ${list.count { it.isPomodoro } + 1}"
+        } else {
+            "Timer ${list.count { !it.isWorkTimer && !it.isPomodoro } + 1}"
+        }
+        list.add(repository.createTimer(name, isPomodoro))
         _timers.value = list
         persist()
     }
@@ -153,20 +160,20 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         previewPlayer.playOnce(soundById(soundId).previewNotes)
     }
 
-    fun enterDigit(timerId: String, field: DurationField, digit: Int) {
+    fun enterDigit(timerId: String, phase: PomodoroPhase, field: DurationField, digit: Int) {
         mutate(timerId) { timer ->
             if (timer.status != TimerStatus.IDLE) return@mutate
-            val current = timer.fieldValue(field)
-            timer.setFieldValue(field, (current * 10 + digit) % 100)
+            val current = timer.fieldValue(phase, field)
+            timer.setFieldValue(phase, field, (current * 10 + digit) % 100)
             timer.normalize()
         }
         syncWorkRemainingFromDigits(timerId)
     }
 
-    fun backspaceDigit(timerId: String, field: DurationField) {
+    fun backspaceDigit(timerId: String, phase: PomodoroPhase, field: DurationField) {
         mutate(timerId) { timer ->
             if (timer.status != TimerStatus.IDLE) return@mutate
-            timer.setFieldValue(field, timer.fieldValue(field) / 10)
+            timer.setFieldValue(phase, field, timer.fieldValue(phase, field) / 10)
             timer.normalize()
         }
         syncWorkRemainingFromDigits(timerId)
@@ -233,6 +240,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             it.endAtEpochMs = null
             it.pausedRemainingMs = null
             it.finishedAtEpochMs = null
+            // Resetting a pomodoro starts the whole cycle over, not just the
+            // phase it happened to be sitting in.
+            if (it.isPomodoro) it.phase = PomodoroPhase.WORK
         }
     }
 
@@ -242,8 +252,66 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             if (it.status == TimerStatus.RINGING) {
                 it.status = TimerStatus.IDLE
                 it.finishedAtEpochMs = null
+                // Dismissing a finished work session moves you into the rest
+                // phase (and vice versa), ready to start with its own duration.
+                if (it.isPomodoro) it.phase = it.phase.next()
             }
         }
+    }
+
+    /**
+     * Nudges a running or paused pomodoro's live countdown by a fixed
+     * increment, without changing phase -- for correcting the clock after
+     * forgetting to unpause, rather than restarting the phase from scratch.
+     */
+    fun skipForward(timerId: String) = nudge(timerId, SKIP_INCREMENT_MS)
+
+    fun skipBack(timerId: String) = nudge(timerId, -SKIP_INCREMENT_MS)
+
+    private fun nudge(timerId: String, deltaMs: Long) {
+        val timer = _timers.value.find { it.id == timerId } ?: return
+        if (!timer.isPomodoro) return
+        val maxMs = timer.durationMs()
+        when (timer.status) {
+            TimerStatus.RUNNING -> {
+                val endAt = timer.endAtEpochMs ?: return
+                val now = System.currentTimeMillis()
+                val remaining = (endAt - now).coerceIn(0L, maxMs)
+                val newRemaining = (remaining - deltaMs).coerceIn(0L, maxMs)
+                if (newRemaining <= 0L) {
+                    finishNow(timerId)
+                    return
+                }
+                val newEndAt = now + newRemaining
+                val context = getApplication<Application>()
+                AlarmScheduler.schedule(context, timerId, newEndAt)
+                CountdownNotifier.show(context, timerId, timer.name, newEndAt)
+                mutate(timerId) { it.endAtEpochMs = newEndAt }
+            }
+            TimerStatus.PAUSED -> {
+                val remaining = timer.pausedRemainingMs ?: return
+                val newRemaining = (remaining - deltaMs).coerceIn(0L, maxMs)
+                mutate(timerId) { it.pausedRemainingMs = newRemaining }
+            }
+            else -> {}
+        }
+    }
+
+    /** What AlarmReceiver would do if its alarm fired right now -- used when a
+     * "skip ahead" nudge runs the remaining time down to zero early. */
+    private fun finishNow(timerId: String) {
+        val timer = _timers.value.find { it.id == timerId } ?: return
+        val context = getApplication<Application>()
+        AlarmScheduler.cancel(context, timerId)
+        CountdownNotifier.cancel(context, timerId)
+        val now = System.currentTimeMillis()
+        mutate(timerId) {
+            it.status = TimerStatus.RINGING
+            it.finishedAtEpochMs = now
+            it.lastFinishedAtEpochMs = now
+            it.endAtEpochMs = null
+        }
+        AlarmService.start(context, timerId, timer.name, timer.soundId)
     }
 
     // -- Work timer ---------------------------------------------------------
@@ -363,19 +431,36 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     private companion object {
         const val MAX_CATCH_UP_CYCLES = 32
+        const val SKIP_INCREMENT_MS = 10 * 60_000L
     }
 }
 
-private fun TimerData.fieldValue(field: DurationField): Int = when (field) {
-    DurationField.HOURS -> hours
-    DurationField.MINUTES -> minutes
-    DurationField.SECONDS -> seconds
+/** For a plain timer [phase] is always WORK, so this reads/writes the same
+ * hours/minutes/seconds fields as before pomodoro existed. */
+private fun TimerData.fieldValue(phase: PomodoroPhase, field: DurationField): Int = when (phase) {
+    PomodoroPhase.WORK -> when (field) {
+        DurationField.HOURS -> hours
+        DurationField.MINUTES -> minutes
+        DurationField.SECONDS -> seconds
+    }
+    PomodoroPhase.REST -> when (field) {
+        DurationField.HOURS -> restHours
+        DurationField.MINUTES -> restMinutes
+        DurationField.SECONDS -> restSeconds
+    }
 }
 
-private fun TimerData.setFieldValue(field: DurationField, value: Int) {
-    when (field) {
-        DurationField.HOURS -> hours = value
-        DurationField.MINUTES -> minutes = value
-        DurationField.SECONDS -> seconds = value
+private fun TimerData.setFieldValue(phase: PomodoroPhase, field: DurationField, value: Int) {
+    when (phase) {
+        PomodoroPhase.WORK -> when (field) {
+            DurationField.HOURS -> hours = value
+            DurationField.MINUTES -> minutes = value
+            DurationField.SECONDS -> seconds = value
+        }
+        PomodoroPhase.REST -> when (field) {
+            DurationField.HOURS -> restHours = value
+            DurationField.MINUTES -> restMinutes = value
+            DurationField.SECONDS -> restSeconds = value
+        }
     }
 }
