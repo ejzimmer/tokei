@@ -431,7 +431,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     private companion object {
         const val MAX_CATCH_UP_CYCLES = 32
-        const val SKIP_INCREMENT_MS = 60_000L
+        const val SKIP_INCREMENT_MS = 10 * 60_000L
     }
 }
 

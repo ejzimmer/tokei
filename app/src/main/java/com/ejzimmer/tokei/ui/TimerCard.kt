@@ -158,10 +158,10 @@ fun TimerCard(
         if (timer.isPomodoro && (timer.status == TimerStatus.RUNNING || timer.status == TimerStatus.PAUSED)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick = onSkipBack) {
-                    Text("◀ 1 min", color = FaceDim)
+                    Text("◀ 10 min", color = FaceDim)
                 }
                 TextButton(onClick = onSkipForward) {
-                    Text("1 min ▶", color = FaceDim)
+                    Text("10 min ▶", color = FaceDim)
                 }
             }
         }
