@@ -1,6 +1,7 @@
 package com.ejzimmer.tokei.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -8,11 +9,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -85,8 +91,8 @@ fun TimerListScreen(
                         onDelete = { viewModel.deleteTimer(timer.id) },
                         onSoundChange = { viewModel.setSound(timer.id, it) },
                         onPreviewSound = { viewModel.previewSound(timer.soundId) },
-                        onDigit = { field, digit -> viewModel.enterDigit(timer.id, field, digit) },
-                        onBackspace = { field -> viewModel.backspaceDigit(timer.id, field) },
+                        onDigit = { phase, field, digit -> viewModel.enterDigit(timer.id, phase, field, digit) },
+                        onBackspace = { phase, field -> viewModel.backspaceDigit(timer.id, phase, field) },
                         onStartPause = {
                             if (timer.status == TimerStatus.RUNNING) {
                                 viewModel.pause(timer.id)
@@ -96,16 +102,37 @@ fun TimerListScreen(
                         },
                         onReset = { viewModel.reset(timer.id) },
                         onStopAlarm = { viewModel.stopAlarm(timer.id) },
+                        onSkipBack = { viewModel.skipBack(timer.id) },
+                        onSkipForward = { viewModel.skipForward(timer.id) },
                     )
                 }
             }
 
-            Button(
-                onClick = { viewModel.addTimer() },
-                colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
-                modifier = Modifier.padding(top = 8.dp),
-            ) {
-                Text("+ Add timer")
+            var showAddMenu by remember { mutableStateOf(false) }
+            Box {
+                Button(
+                    onClick = { showAddMenu = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    Text("+ Add timer")
+                }
+                DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Countdown timer") },
+                        onClick = {
+                            viewModel.addTimer()
+                            showAddMenu = false
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Pomodoro timer") },
+                        onClick = {
+                            viewModel.addTimer(isPomodoro = true)
+                            showAddMenu = false
+                        },
+                    )
+                }
             }
         }
     }

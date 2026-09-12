@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ejzimmer.tokei.audio.SOUNDS
+import com.ejzimmer.tokei.data.PomodoroPhase
 import com.ejzimmer.tokei.data.TimerData
 import com.ejzimmer.tokei.data.TimerStatus
 import kotlinx.coroutines.delay
@@ -48,11 +49,13 @@ fun TimerCard(
     onDelete: () -> Unit,
     onSoundChange: (String) -> Unit,
     onPreviewSound: () -> Unit,
-    onDigit: (DurationField, Int) -> Unit,
-    onBackspace: (DurationField) -> Unit,
+    onDigit: (PomodoroPhase, DurationField, Int) -> Unit,
+    onBackspace: (PomodoroPhase, DurationField) -> Unit,
     onStartPause: () -> Unit,
     onReset: () -> Unit,
     onStopAlarm: () -> Unit,
+    onSkipBack: () -> Unit = {},
+    onSkipForward: () -> Unit = {},
     workInfo: WorkCardInfo? = null,
 ) {
     val isRinging = timer.status == TimerStatus.RINGING
@@ -87,8 +90,28 @@ fun TimerCard(
         }
 
         if (timer.status == TimerStatus.IDLE) {
-            EditableDurationFields(timer.hours, timer.minutes, timer.seconds, onDigit, onBackspace)
+            if (timer.isPomodoro) {
+                PhaseLabel(PomodoroPhase.WORK)
+                EditableDurationFields(
+                    timer.hours, timer.minutes, timer.seconds,
+                    onDigit = { field, digit -> onDigit(PomodoroPhase.WORK, field, digit) },
+                    onBackspace = { field -> onBackspace(PomodoroPhase.WORK, field) },
+                )
+                PhaseLabel(PomodoroPhase.REST)
+                EditableDurationFields(
+                    timer.restHours, timer.restMinutes, timer.restSeconds,
+                    onDigit = { field, digit -> onDigit(PomodoroPhase.REST, field, digit) },
+                    onBackspace = { field -> onBackspace(PomodoroPhase.REST, field) },
+                )
+            } else {
+                EditableDurationFields(
+                    timer.hours, timer.minutes, timer.seconds,
+                    onDigit = { field, digit -> onDigit(PomodoroPhase.WORK, field, digit) },
+                    onBackspace = { field -> onBackspace(PomodoroPhase.WORK, field) },
+                )
+            }
         } else {
+            if (timer.isPomodoro) PhaseLabel(timer.phase)
             val (h, m, s) = remainingParts(timer, nowMs)
             ReadOnlyDuration(h, m, s, accent = timer.status == TimerStatus.RUNNING)
         }
@@ -132,6 +155,17 @@ fun TimerCard(
             SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
         }
 
+        if (timer.isPomodoro && (timer.status == TimerStatus.RUNNING || timer.status == TimerStatus.PAUSED)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TextButton(onClick = onSkipBack) {
+                    Text("◀ 1 min", color = FaceDim)
+                }
+                TextButton(onClick = onSkipForward) {
+                    Text("1 min ▶", color = FaceDim)
+                }
+            }
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(
                 onClick = onReset,
@@ -149,7 +183,7 @@ fun TimerCard(
         }
 
         if (isRinging) {
-            Text("Time's up!", color = Face, fontWeight = FontWeight.Bold)
+            Text(ringingLabel(timer), color = Face, fontWeight = FontWeight.Bold)
             timer.finishedAtEpochMs?.let {
                 Text("Finished at ${formatClockTime(it)}", color = Face, fontSize = 13.sp)
             }
@@ -161,6 +195,24 @@ fun TimerCard(
             }
         }
     }
+}
+
+@Composable
+private fun PhaseLabel(phase: PomodoroPhase) {
+    Text(
+        if (phase == PomodoroPhase.WORK) "WORK" else "REST",
+        color = if (phase == PomodoroPhase.WORK) Accent else FaceDim,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+    )
+}
+
+// While ringing, timer.phase is still the phase that just finished --
+// stopAlarm() is what flips it once the user dismisses the alarm.
+private fun ringingLabel(timer: TimerData): String = when {
+    !timer.isPomodoro -> "Time's up!"
+    timer.phase == PomodoroPhase.WORK -> "Work session done!"
+    else -> "Break's over!"
 }
 
 @Composable
