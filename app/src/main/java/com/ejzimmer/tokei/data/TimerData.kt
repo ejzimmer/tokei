@@ -42,8 +42,13 @@ data class TimerData(
     var restMinutes: Int = 5,
     var restSeconds: Int = 0,
     var phase: PomodoroPhase = PomodoroPhase.WORK,
+    // Remaining ms for whichever pomodoro phase ISN'T [phase] -- populated
+    // when tapping away from a phase that was running or paused, so its
+    // progress survives the switch. Null means "untouched": use its full
+    // configured duration. Meaningless for a non-pomodoro timer.
+    var otherPhaseRemainingMs: Long? = null,
 ) {
-    fun durationMs(): Long {
+    fun durationMs(phase: PomodoroPhase = this.phase): Long {
         val useRest = isPomodoro && phase == PomodoroPhase.REST
         val h = if (useRest) restHours else hours
         val m = if (useRest) restMinutes else minutes
@@ -90,6 +95,7 @@ data class TimerData(
         put("restMinutes", restMinutes)
         put("restSeconds", restSeconds)
         put("phase", phase.name)
+        put("otherPhaseRemainingMs", otherPhaseRemainingMs ?: JSONObject.NULL)
     }
 
     companion object {
@@ -112,6 +118,7 @@ data class TimerData(
             restSeconds = json.optInt("restSeconds", 0),
             phase = runCatching { PomodoroPhase.valueOf(json.getString("phase")) }
                 .getOrDefault(PomodoroPhase.WORK),
+            otherPhaseRemainingMs = json.optLongOrNull("otherPhaseRemainingMs"),
         )
     }
 }

@@ -242,7 +242,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             it.finishedAtEpochMs = null
             // Resetting a pomodoro starts the whole cycle over, not just the
             // phase it happened to be sitting in.
-            if (it.isPomodoro) it.phase = PomodoroPhase.WORK
+            if (it.isPomodoro) {
+                it.phase = PomodoroPhase.WORK
+                it.otherPhaseRemainingMs = null
+            }
         }
     }
 
@@ -253,9 +256,54 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 it.status = TimerStatus.IDLE
                 it.finishedAtEpochMs = null
                 // Dismissing a finished work session moves you into the rest
-                // phase (and vice versa), ready to start with its own duration.
-                if (it.isPomodoro) it.phase = it.phase.next()
+                // phase (and vice versa), ready to start with its own full
+                // duration -- the phase that just rang counted all the way
+                // down, so there's no partial progress worth keeping for it.
+                if (it.isPomodoro) {
+                    it.phase = it.phase.next()
+                    it.otherPhaseRemainingMs = null
+                }
             }
+        }
+    }
+
+    /**
+     * Makes [phase] the indicated (running/about-to-run) side of a pomodoro
+     * timer. If the other side was actively counting down, it's stopped --
+     * its remaining time is kept, not discarded -- and [phase] does NOT
+     * start automatically; the user still has to press Play.
+     */
+    fun selectPhase(timerId: String, phase: PomodoroPhase) {
+        val timer = _timers.value.find { it.id == timerId } ?: return
+        if (!timer.isPomodoro || timer.phase == phase) return
+
+        when (timer.status) {
+            TimerStatus.RUNNING -> {
+                val endAt = timer.endAtEpochMs ?: return
+                val leavingRemaining = (endAt - System.currentTimeMillis()).coerceAtLeast(0L)
+                val enteringRemaining = timer.otherPhaseRemainingMs ?: timer.durationMs(phase)
+                val context = getApplication<Application>()
+                AlarmScheduler.cancel(context, timerId)
+                CountdownNotifier.cancel(context, timerId)
+                mutate(timerId) {
+                    it.otherPhaseRemainingMs = leavingRemaining
+                    it.phase = phase
+                    it.pausedRemainingMs = enteringRemaining
+                    it.endAtEpochMs = null
+                    it.status = TimerStatus.PAUSED
+                }
+            }
+            TimerStatus.PAUSED -> {
+                val leavingRemaining = timer.pausedRemainingMs ?: timer.durationMs(timer.phase)
+                val enteringRemaining = timer.otherPhaseRemainingMs ?: timer.durationMs(phase)
+                mutate(timerId) {
+                    it.otherPhaseRemainingMs = leavingRemaining
+                    it.phase = phase
+                    it.pausedRemainingMs = enteringRemaining
+                }
+            }
+            TimerStatus.IDLE -> mutate(timerId) { it.phase = phase }
+            TimerStatus.RINGING -> {}
         }
     }
 

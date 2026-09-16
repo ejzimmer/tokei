@@ -27,7 +27,7 @@ import com.ejzimmer.tokei.audio.soundById
  * is promoted to take its place.
  */
 class AlarmService : Service() {
-    private data class Ringing(val name: String, val player: AlarmPlayer)
+    private data class Ringing(val name: String, val player: AlarmPlayer, val loop: Boolean)
 
     private val ringing = mutableMapOf<String, Ringing>()
     private var vibrator: Vibrator? = null
@@ -58,8 +58,11 @@ class AlarmService : Service() {
 
     private fun startOne(timerId: String, name: String, soundId: String) {
         ensureChannel()
-        val player = AlarmPlayer().also { it.playLooping(soundById(soundId).notes) }
-        ringing[timerId] = Ringing(name, player)
+        val sound = soundById(soundId)
+        val player = AlarmPlayer().also {
+            if (sound.loop) it.playLooping(sound.notes) else it.playOnce(sound.notes)
+        }
+        ringing[timerId] = Ringing(name, player, sound.loop)
         restartVibration()
 
         val notification = buildNotification(timerId, name)
@@ -92,10 +95,14 @@ class AlarmService : Service() {
         }
     }
 
+    /** A non-looping sound falls silent on its own, so buzzing on until Stop
+     * is pressed would defeat the point of picking one. The pattern repeats
+     * only while something ringing still wants a looping alarm. */
     private fun restartVibration() {
         val v = vibrator ?: newVibrator().also { vibrator = it }
         val pattern = longArrayOf(0, 500, 200, 500, 200, 500)
-        v.vibrate(VibrationEffect.createWaveform(pattern, 0))
+        val repeat = if (ringing.values.any { it.loop }) 0 else -1
+        v.vibrate(VibrationEffect.createWaveform(pattern, repeat))
     }
 
     private fun newVibrator(): Vibrator =

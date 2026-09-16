@@ -5,8 +5,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.media.RingtoneManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.ejzimmer.tokei.MainActivity
@@ -112,8 +110,8 @@ object WorkNotifier {
     private fun ensureChannels(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
 
-        // Hitting 7.5 hours gets the alarm sound -- it's the one that should
-        // cut through whatever else is making noise.
+        // A plain notification, not the alarm ringtone -- hitting 7.5 hours
+        // shouldn't sound like an alarm going off, just let you know.
         manager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_CYCLE,
@@ -121,13 +119,6 @@ object WorkNotifier {
                 NotificationManager.IMPORTANCE_HIGH,
             ).apply {
                 description = context.getString(R.string.notification_channel_description_work_cycle)
-                setSound(
-                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build(),
-                )
             },
         )
 
