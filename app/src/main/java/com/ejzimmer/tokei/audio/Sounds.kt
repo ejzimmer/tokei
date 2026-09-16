@@ -24,6 +24,11 @@ data class ChimeSound(
     val label: String,
     val notes: List<NoteEvent>,
     val previewNotes: List<NoteEvent>,
+    // Whether an alarm using this sound repeats it until Stop is pressed.
+    // false plays the phrase once and then falls silent on its own -- for
+    // situations (e.g. exercising) where fumbling for the phone to silence a
+    // looping alarm isn't practical.
+    val loop: Boolean = true,
 )
 
 private object Note {
@@ -91,11 +96,17 @@ private val xylophoneNotes = repeatedRiff(
     riffPeriodMs = 1500, repeats = 8,
 )
 
+private val tripleBeepNotes = sequence(
+    listOf(Note.C6, Note.C6, Note.C6),
+    spacingMs = 450, durationMs = 280, gain = 0.6f,
+)
+
 val SOUNDS: List<ChimeSound> = listOf(
     ChimeSound("chime", "Chime", chimeNotes, previewNotes = chimeNotes.take(2)),
     ChimeSound("bell", "Bell", bellNotes, previewNotes = bellNotes.take(3)),
     ChimeSound("marimba", "Marimba", marimbaNotes, previewNotes = marimbaNotes.take(8)),
     ChimeSound("xylophone", "Xylophone", xylophoneNotes, previewNotes = xylophoneNotes.take(6)),
+    ChimeSound("triple_beep", "Triple beep", tripleBeepNotes, previewNotes = tripleBeepNotes, loop = false),
 )
 
 fun soundById(id: String): ChimeSound = SOUNDS.find { it.id == id } ?: SOUNDS[0]

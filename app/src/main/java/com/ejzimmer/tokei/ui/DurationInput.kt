@@ -26,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -58,12 +60,30 @@ fun EditableDurationFields(
     }
 }
 
+/** Same keypad entry as [EditableDurationFields], minus the hours box --
+ * for a pomodoro's work/rest durations, which never need to run in hours
+ * and need to stay narrow enough to sit two-up. */
 @Composable
-private fun ClockColon() {
+fun EditableDurationFieldsMmSs(
+    minutes: Int,
+    seconds: Int,
+    onDigit: (DurationField, Int) -> Unit,
+    onBackspace: (DurationField) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        DigitShiftField(pad2(minutes), DurationField.MINUTES, onDigit, onBackspace, boxWidth = 52.dp, fontSize = 24.sp)
+        ClockColon(fontSize = 24.sp)
+        DigitShiftField(pad2(seconds), DurationField.SECONDS, onDigit, onBackspace, boxWidth = 52.dp, fontSize = 24.sp)
+    }
+}
+
+@Composable
+private fun ClockColon(fontSize: TextUnit = 32.sp) {
     Text(
         ":",
         color = FaceDim,
-        fontSize = 32.sp,
+        fontSize = fontSize,
         fontWeight = FontWeight.Bold,
     )
 }
@@ -74,6 +94,8 @@ private fun DigitShiftField(
     field: DurationField,
     onDigit: (DurationField, Int) -> Unit,
     onBackspace: (DurationField) -> Unit,
+    boxWidth: Dp = 72.dp,
+    fontSize: TextUnit = 32.sp,
 ) {
     // A plain Material TextField reserves a lot of internal padding for a
     // normal form field, which left almost no room for two bold 32sp digits
@@ -98,10 +120,10 @@ private fun DigitShiftField(
                 // same length (e.g. no-op edit) -- ignore
             }
         },
-        modifier = Modifier.width(72.dp),
+        modifier = Modifier.width(boxWidth),
         singleLine = true,
         textStyle = LocalTextStyle.current.copy(
-            fontSize = 32.sp,
+            fontSize = fontSize,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
             color = Face,
@@ -135,6 +157,19 @@ fun ReadOnlyDuration(hours: Int, minutes: Int, seconds: Int, accent: Boolean, mo
         modifier = modifier,
         color = if (accent) Accent else Face,
         fontSize = 42.sp,
+        fontWeight = FontWeight.Bold,
+    )
+}
+
+/** mm:ss only, smaller -- sized to sit two-up in a pomodoro's side-by-side
+ * work/rest display rather than take a full card width. */
+@Composable
+fun ReadOnlyDurationMmSs(minutes: Int, seconds: Int, accent: Boolean, modifier: Modifier = Modifier) {
+    Text(
+        "${pad2(minutes)}:${pad2(seconds)}",
+        modifier = modifier,
+        color = if (accent) Accent else Face,
+        fontSize = 32.sp,
         fontWeight = FontWeight.Bold,
     )
 }

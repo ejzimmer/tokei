@@ -58,7 +58,10 @@ class AlarmService : Service() {
 
     private fun startOne(timerId: String, name: String, soundId: String) {
         ensureChannel()
-        val player = AlarmPlayer().also { it.playLooping(soundById(soundId).notes) }
+        val sound = soundById(soundId)
+        val player = AlarmPlayer().also {
+            if (sound.loop) it.playLooping(sound.notes) else it.playOnce(sound.notes)
+        }
         ringing[timerId] = Ringing(name, player)
         restartVibration()
 

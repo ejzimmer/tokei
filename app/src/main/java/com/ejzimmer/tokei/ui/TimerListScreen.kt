@@ -73,15 +73,7 @@ fun TimerListScreen(
                     TimerCard(
                         timer = timer,
                         workInfo = if (timer.isWorkTimer) {
-                            workCardInfo(
-                                state = workState,
-                                today = LocalDate.now(),
-                                remainingMs = if (timer.status == TimerStatus.RUNNING) {
-                                    ((timer.endAtEpochMs ?: nowMs) - nowMs).coerceAtLeast(0L)
-                                } else {
-                                    timer.durationMs()
-                                },
-                            )
+                            workCardInfo(state = workState, today = LocalDate.now())
                         } else {
                             null
                         },
@@ -104,6 +96,7 @@ fun TimerListScreen(
                         onStopAlarm = { viewModel.stopAlarm(timer.id) },
                         onSkipBack = { viewModel.skipBack(timer.id) },
                         onSkipForward = { viewModel.skipForward(timer.id) },
+                        onSelectPhase = { phase -> viewModel.selectPhase(timer.id, phase) },
                     )
                 }
             }

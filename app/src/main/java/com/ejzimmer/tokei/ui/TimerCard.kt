@@ -2,11 +2,15 @@ package com.ejzimmer.tokei.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -25,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +61,7 @@ fun TimerCard(
     onStopAlarm: () -> Unit,
     onSkipBack: () -> Unit = {},
     onSkipForward: () -> Unit = {},
+    onSelectPhase: (PomodoroPhase) -> Unit = {},
     workInfo: WorkCardInfo? = null,
 ) {
     val isRinging = timer.status == TimerStatus.RINGING
@@ -89,29 +95,21 @@ fun TimerCard(
             )
         }
 
-        if (timer.status == TimerStatus.IDLE) {
-            if (timer.isPomodoro) {
-                PhaseLabel(PomodoroPhase.WORK)
-                EditableDurationFields(
-                    timer.hours, timer.minutes, timer.seconds,
-                    onDigit = { field, digit -> onDigit(PomodoroPhase.WORK, field, digit) },
-                    onBackspace = { field -> onBackspace(PomodoroPhase.WORK, field) },
-                )
-                PhaseLabel(PomodoroPhase.REST)
-                EditableDurationFields(
-                    timer.restHours, timer.restMinutes, timer.restSeconds,
-                    onDigit = { field, digit -> onDigit(PomodoroPhase.REST, field, digit) },
-                    onBackspace = { field -> onBackspace(PomodoroPhase.REST, field) },
-                )
-            } else {
-                EditableDurationFields(
-                    timer.hours, timer.minutes, timer.seconds,
-                    onDigit = { field, digit -> onDigit(PomodoroPhase.WORK, field, digit) },
-                    onBackspace = { field -> onBackspace(PomodoroPhase.WORK, field) },
-                )
-            }
+        if (timer.isPomodoro) {
+            PomodoroDualDisplay(
+                timer = timer,
+                nowMs = nowMs,
+                onSelectPhase = onSelectPhase,
+                onDigit = onDigit,
+                onBackspace = onBackspace,
+            )
+        } else if (timer.status == TimerStatus.IDLE) {
+            EditableDurationFields(
+                timer.hours, timer.minutes, timer.seconds,
+                onDigit = { field, digit -> onDigit(PomodoroPhase.WORK, field, digit) },
+                onBackspace = { field -> onBackspace(PomodoroPhase.WORK, field) },
+            )
         } else {
-            if (timer.isPomodoro) PhaseLabel(timer.phase)
             val (h, m, s) = remainingParts(timer, nowMs)
             ReadOnlyDuration(h, m, s, accent = timer.status == TimerStatus.RUNNING)
         }
@@ -131,11 +129,7 @@ fun TimerCard(
 
         if (!isRinging && timer.lastFinishedAtEpochMs != null) {
             Text(
-                if (workInfo == null) {
-                    "Last finished at ${formatClockTime(timer.lastFinishedAtEpochMs!!)}"
-                } else {
-                    "Last cycle finished at ${formatClockTime(timer.lastFinishedAtEpochMs!!)}"
-                },
+                "Last finished ${formatClockTime(timer.lastFinishedAtEpochMs!!)}",
                 color = FaceDim,
                 fontSize = 12.sp,
             )
@@ -197,14 +191,129 @@ fun TimerCard(
     }
 }
 
+/**
+ * The work/rest timers side by side, mm:ss only. Whichever is indicated
+ * (running, or about to run on Play) carries the dot; tapping the other
+ * makes IT the indicated side, stopping the first without discarding its
+ * remaining time. Editable while IDLE, read-only countdowns otherwise.
+ */
 @Composable
-private fun PhaseLabel(phase: PomodoroPhase) {
-    Text(
-        if (phase == PomodoroPhase.WORK) "WORK" else "REST",
-        color = if (phase == PomodoroPhase.WORK) Accent else FaceDim,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Bold,
+private fun PomodoroDualDisplay(
+    timer: TimerData,
+    nowMs: Long,
+    onSelectPhase: (PomodoroPhase) -> Unit,
+    onDigit: (PomodoroPhase, DurationField, Int) -> Unit,
+    onBackspace: (PomodoroPhase, DurationField) -> Unit,
+) {
+    val editable = timer.status == TimerStatus.IDLE
+    val (workMinutes, workSeconds) = if (editable) {
+        timer.minutes to timer.seconds
+    } else {
+        pomodoroRemainingParts(timer, PomodoroPhase.WORK, nowMs)
+    }
+    val (restMinutes, restSeconds) = if (editable) {
+        timer.restMinutes to timer.restSeconds
+    } else {
+        pomodoroRemainingParts(timer, PomodoroPhase.REST, nowMs)
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        PomodoroPhaseColumn(
+            label = "Work",
+            isIndicated = timer.phase == PomodoroPhase.WORK,
+            isRunning = timer.phase == PomodoroPhase.WORK && timer.status == TimerStatus.RUNNING,
+            minutes = workMinutes,
+            seconds = workSeconds,
+            editable = editable,
+            onSelect = { onSelectPhase(PomodoroPhase.WORK) },
+            onDigit = { field, digit -> onDigit(PomodoroPhase.WORK, field, digit) },
+            onBackspace = { field -> onBackspace(PomodoroPhase.WORK, field) },
+        )
+        PomodoroPhaseColumn(
+            label = "Rest",
+            isIndicated = timer.phase == PomodoroPhase.REST,
+            isRunning = timer.phase == PomodoroPhase.REST && timer.status == TimerStatus.RUNNING,
+            minutes = restMinutes,
+            seconds = restSeconds,
+            editable = editable,
+            onSelect = { onSelectPhase(PomodoroPhase.REST) },
+            onDigit = { field, digit -> onDigit(PomodoroPhase.REST, field, digit) },
+            onBackspace = { field -> onBackspace(PomodoroPhase.REST, field) },
+        )
+    }
+}
+
+@Composable
+private fun PomodoroPhaseColumn(
+    label: String,
+    isIndicated: Boolean,
+    isRunning: Boolean,
+    minutes: Int,
+    seconds: Int,
+    editable: Boolean,
+    onSelect: () -> Unit,
+    onDigit: (DurationField, Int) -> Unit,
+    onBackspace: (DurationField) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onSelect)
+            .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        PhaseIndicatorDot(isIndicated = isIndicated, isRunning = isRunning)
+        Text(
+            label,
+            color = if (isIndicated) Accent else FaceDim,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        if (editable) {
+            EditableDurationFieldsMmSs(minutes, seconds, onDigit, onBackspace)
+        } else {
+            ReadOnlyDurationMmSs(minutes, seconds, accent = isRunning)
+        }
+    }
+}
+
+/** A solid dot marks the side that's actually counting down; an outline
+ * marks one that's indicated but waiting on Play. Neither is text, so it
+ * reads the same whichever phase it's pointing at. */
+@Composable
+private fun PhaseIndicatorDot(isIndicated: Boolean, isRunning: Boolean) {
+    Box(
+        modifier = Modifier
+            .size(10.dp)
+            .then(
+                when {
+                    isIndicated && isRunning -> Modifier.background(Accent, CircleShape)
+                    isIndicated -> Modifier.border(1.5.dp, Accent, CircleShape)
+                    else -> Modifier
+                },
+            ),
     )
+}
+
+/** [phase]'s remaining time for display: the live countdown if it's the
+ * indicated (running/paused) side, otherwise whatever was saved the last
+ * time it was switched away from -- or its full configured duration if
+ * it's never been touched. */
+private fun pomodoroRemainingParts(timer: TimerData, phase: PomodoroPhase, nowMs: Long): Pair<Int, Int> {
+    val remainingMs = if (phase == timer.phase) {
+        when (timer.status) {
+            TimerStatus.RUNNING -> (timer.endAtEpochMs ?: nowMs) - nowMs
+            TimerStatus.PAUSED -> timer.pausedRemainingMs ?: timer.durationMs(phase)
+            else -> 0L
+        }
+    } else {
+        timer.otherPhaseRemainingMs ?: timer.durationMs(phase)
+    }.coerceAtLeast(0L)
+    val totalSeconds = remainingMs / 1000
+    return (totalSeconds / 60).toInt() to (totalSeconds % 60).toInt()
 }
 
 // While ringing, timer.phase is still the phase that just finished --

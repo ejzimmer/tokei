@@ -32,7 +32,7 @@ at zero -- it books the finished day and rolls straight into the next one, so
 it can run continuously through a long day.
 
 - **It counts toward a specific day.** The card always says which one
-  ("Counting down Wednesday's hours"). Pass 7.5 hours on Tuesday and the
+  ("Counting down for Wednesday"). Pass 7.5 hours on Tuesday and the
   overflow starts counting toward Wednesday; stop 2.5 hours short and
   Wednesday starts by finishing Tuesday off before Wednesday's own 7.5
   begins. You can be several days ahead or behind either way.
