@@ -15,7 +15,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -102,23 +102,31 @@ private fun DigitShiftField(
     // at a sane width. BasicTextField has none of that chrome, so the box
     // can stay compact and the digits still have room to breathe.
     //
-    // This is a shift-register keypad, not free-form text, so the cursor is
-    // forced back to the end on every change. Without that, tapping into the
-    // middle of "05" and typing left the digit inserted mid-string -- the
-    // shift logic below then read the OLD trailing digit as "what was typed".
-    var fieldValue by remember(value) {
-        mutableStateOf(TextFieldValue(text = value, selection = TextRange(value.length)))
+    // This is a shift-register keypad, not free-form text: the box always
+    // shows exactly the two digits the ViewModel holds, with the cursor at
+    // the end. Anything the user types is a keystroke to report, never text
+    // to keep -- echoing it back left the digit inserted mid-string when
+    // they tapped into the middle of "05", and the shift logic below then
+    // read the OLD trailing digit as "what was typed".
+    //
+    // [revision] bumps on every keystroke so a fresh value reaches the field
+    // even when the keystroke leaves the ViewModel's value alone (typing 0
+    // into "00", or 1 into "11"). Without it nothing recomposes, and the
+    // third digit the user typed stays on screen.
+    var revision by remember { mutableIntStateOf(0) }
+    val fieldValue = remember(value, revision) {
+        TextFieldValue(text = value, selection = TextRange(value.length))
     }
     BasicTextField(
         value = fieldValue,
         onValueChange = { newValue ->
-            fieldValue = newValue.copy(selection = TextRange(newValue.text.length))
             val digits = newValue.text.filter { it.isDigit() }
             when {
                 digits.length > 2 -> digits.last().digitToIntOrNull()?.let { onDigit(field, it) }
                 digits.length < 2 -> onBackspace(field)
                 // same length (e.g. no-op edit) -- ignore
             }
+            revision++
         },
         modifier = Modifier.width(boxWidth),
         singleLine = true,
