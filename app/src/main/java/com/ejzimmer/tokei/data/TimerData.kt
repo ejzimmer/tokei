@@ -6,6 +6,9 @@ import java.util.UUID
 
 enum class TimerStatus { IDLE, RUNNING, PAUSED, RINGING }
 
+/** A pomodoro's longest settable phase is 59:59 -- its card has no hours box. */
+private const val MAX_POMODORO_MINUTES = 59
+
 /** Which half of a pomodoro cycle a timer is currently in. Irrelevant for a
  * plain (non-pomodoro) timer, which always behaves as if it were WORK. */
 enum class PomodoroPhase { WORK, REST }
@@ -50,27 +53,43 @@ data class TimerData(
 ) {
     fun durationMs(phase: PomodoroPhase = this.phase): Long {
         val useRest = isPomodoro && phase == PomodoroPhase.REST
-        val h = if (useRest) restHours else hours
+        // A pomodoro is mm:ss, so its hours never count toward the total --
+        // including on a timer saved before normalize() started capping them,
+        // which would otherwise still run an hour longer than the card reads.
+        val h = if (isPomodoro) 0 else hours
         val m = if (useRest) restMinutes else minutes
         val s = if (useRest) restSeconds else seconds
         return ((h * 60L + m) * 60L + s) * 1000L
     }
 
-    /** Carries overflowing seconds into minutes, and overflowing minutes into
+    /**
+     * Carries overflowing seconds into minutes, and overflowing minutes into
      * hours -- for both the work and rest fields, since a pomodoro timer can
-     * have either one being edited. */
+     * have either one being edited.
+     *
+     * A pomodoro has no hours box to carry into, so its minutes stop at 59
+     * instead: typing 99 there used to leave an invisible hour behind, so the
+     * timer ran for 1h39m while the card read 39:00.
+     */
     fun normalize() {
         if (seconds >= 60) {
             minutes += seconds / 60
             seconds %= 60
         }
-        if (minutes >= 60) {
-            hours += minutes / 60
-            minutes %= 60
-        }
         if (restSeconds >= 60) {
             restMinutes += restSeconds / 60
             restSeconds %= 60
+        }
+        if (isPomodoro) {
+            hours = 0
+            restHours = 0
+            minutes = minutes.coerceAtMost(MAX_POMODORO_MINUTES)
+            restMinutes = restMinutes.coerceAtMost(MAX_POMODORO_MINUTES)
+            return
+        }
+        if (minutes >= 60) {
+            hours += minutes / 60
+            minutes %= 60
         }
         if (restMinutes >= 60) {
             restHours += restMinutes / 60
