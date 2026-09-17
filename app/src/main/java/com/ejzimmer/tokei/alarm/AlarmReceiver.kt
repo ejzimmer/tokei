@@ -9,6 +9,7 @@ import com.ejzimmer.tokei.data.TimerStatus
 import com.ejzimmer.tokei.data.cycleCompleted
 import com.ejzimmer.tokei.data.isWorkTimer
 import com.ejzimmer.tokei.data.localDateOf
+import com.ejzimmer.tokei.data.markFinished
 import com.ejzimmer.tokei.data.setRemainingMs
 
 /** Fired by AlarmManager at the exact moment a timer is due. Marks the timer
@@ -35,10 +36,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
         val now = System.currentTimeMillis()
         val finishedAt = timer.endAtEpochMs ?: now
-        timer.status = TimerStatus.RINGING
-        timer.finishedAtEpochMs = finishedAt
-        timer.lastFinishedAtEpochMs = finishedAt
-        timer.endAtEpochMs = null
+        timer.markFinished(finishedAt)
         repository.save(timers)
 
         CountdownNotifier.cancel(context, timerId)

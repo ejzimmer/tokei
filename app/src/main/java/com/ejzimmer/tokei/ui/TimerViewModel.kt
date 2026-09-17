@@ -22,7 +22,7 @@ import com.ejzimmer.tokei.data.claimedForStart
 import com.ejzimmer.tokei.data.cycleCompleted
 import com.ejzimmer.tokei.data.isWorkTimer
 import com.ejzimmer.tokei.data.localDateOf
-import com.ejzimmer.tokei.data.next
+import com.ejzimmer.tokei.data.markFinished
 import com.ejzimmer.tokei.data.reconciled
 import com.ejzimmer.tokei.data.setRemainingMs
 import kotlinx.coroutines.delay
@@ -60,12 +60,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             AlarmEvents.timerFinished.collect { event ->
                 CountdownNotifier.cancel(getApplication<Application>(), event.timerId)
-                mutate(event.timerId) {
-                    it.status = TimerStatus.RINGING
-                    it.finishedAtEpochMs = event.finishedAtEpochMs
-                    it.lastFinishedAtEpochMs = event.finishedAtEpochMs
-                    it.endAtEpochMs = null
-                }
+                // Same transition AlarmReceiver just persisted, applied to the
+                // copy held here -- both start from the pre-ring phase, so
+                // they land on the same side rather than flipping twice.
+                mutate(event.timerId) { it.markFinished(event.finishedAtEpochMs) }
             }
         }
         viewModelScope.launch {
@@ -197,17 +195,23 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         val timer = _timers.value.find { it.id == timerId } ?: return
         val durationMs = timer.pausedRemainingMs ?: timer.durationMs()
         if (durationMs <= 0) return
-        val isFreshStart = timer.status == TimerStatus.IDLE
+        val context = getApplication<Application>()
+        // Starting straight out of a ringing alarm silences it, so moving on
+        // to the next phase is one press rather than Stop and then Start.
+        if (timer.status == TimerStatus.RINGING) AlarmService.stop(context, timerId)
+        // Resuming a pause isn't a new run; picking up from a finished alarm is
+        // -- that used to be counted on the way back through IDLE.
+        val isFreshStart = timer.status != TimerStatus.PAUSED
         val endAt = System.currentTimeMillis() + durationMs
 
         mutate(timerId) {
             it.endAtEpochMs = endAt
             it.pausedRemainingMs = null
             it.lastFinishedAtEpochMs = null
+            it.finishedAtEpochMs = null
             it.status = TimerStatus.RUNNING
         }
         if (isFreshStart) RunCounts.recordRun(timerId)
-        val context = getApplication<Application>()
         AlarmScheduler.schedule(context, timerId, endAt)
         CountdownNotifier.show(context, timerId, timer.name, endAt)
     }
@@ -249,20 +253,15 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Silences the alarm and leaves the timer idle. A pomodoro's handover to
+     * its other phase already happened when it rang, so this is only ever
+     * "quiet, please" -- pressing Start instead skips it entirely. */
     fun stopAlarm(timerId: String) {
         AlarmService.stop(getApplication<Application>(), timerId)
         mutate(timerId) {
             if (it.status == TimerStatus.RINGING) {
                 it.status = TimerStatus.IDLE
                 it.finishedAtEpochMs = null
-                // Dismissing a finished work session moves you into the rest
-                // phase (and vice versa), ready to start with its own full
-                // duration -- the phase that just rang counted all the way
-                // down, so there's no partial progress worth keeping for it.
-                if (it.isPomodoro) {
-                    it.phase = it.phase.next()
-                    it.otherPhaseRemainingMs = null
-                }
             }
         }
     }
@@ -353,12 +352,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         AlarmScheduler.cancel(context, timerId)
         CountdownNotifier.cancel(context, timerId)
         val now = System.currentTimeMillis()
-        mutate(timerId) {
-            it.status = TimerStatus.RINGING
-            it.finishedAtEpochMs = now
-            it.lastFinishedAtEpochMs = now
-            it.endAtEpochMs = null
-        }
+        mutate(timerId) { it.markFinished(now) }
         AlarmService.start(context, timerId, timer.name, timer.soundId)
     }
 

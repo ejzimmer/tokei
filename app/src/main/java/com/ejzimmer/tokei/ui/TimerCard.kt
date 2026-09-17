@@ -127,9 +127,9 @@ fun TimerCard(
             }
         }
 
-        if (!isRinging && timer.lastFinishedAtEpochMs != null) {
+        timer.lastFinishedAtEpochMs?.let {
             Text(
-                "Last finished ${formatClockTime(timer.lastFinishedAtEpochMs!!)}",
+                "Last finished ${formatClockTime(it)}",
                 color = FaceDim,
                 fontSize = 12.sp,
             )
@@ -169,7 +169,6 @@ fun TimerCard(
             }
             Button(
                 onClick = onStartPause,
-                enabled = !isRinging,
                 colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Background),
             ) {
                 Text(startPauseLabel(timer.status, isWork = workInfo != null))
@@ -177,10 +176,6 @@ fun TimerCard(
         }
 
         if (isRinging) {
-            Text(ringingLabel(timer), color = Face, fontWeight = FontWeight.Bold)
-            timer.finishedAtEpochMs?.let {
-                Text("Finished at ${formatClockTime(it)}", color = Face, fontSize = 13.sp)
-            }
             Button(
                 onClick = onStopAlarm,
                 colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
@@ -299,29 +294,18 @@ private fun PhaseIndicatorDot(isIndicated: Boolean, isRunning: Boolean) {
 }
 
 /** [phase]'s remaining time for display: the live countdown if it's the
- * indicated (running/paused) side, otherwise whatever was saved the last
- * time it was switched away from -- or its full configured duration if
- * it's never been touched. */
+ * indicated side and actually counting, otherwise exactly what Start would
+ * run -- which after a ring is the phase just handed over to, at full
+ * length. A side that isn't indicated shows whatever was saved the last time
+ * it was switched away from, or its full duration if it's never been touched. */
 private fun pomodoroRemainingParts(timer: TimerData, phase: PomodoroPhase, nowMs: Long): Pair<Int, Int> {
-    val remainingMs = if (phase == timer.phase) {
-        when (timer.status) {
-            TimerStatus.RUNNING -> (timer.endAtEpochMs ?: nowMs) - nowMs
-            TimerStatus.PAUSED -> timer.pausedRemainingMs ?: timer.durationMs(phase)
-            else -> 0L
-        }
-    } else {
-        timer.otherPhaseRemainingMs ?: timer.durationMs(phase)
+    val remainingMs = when {
+        phase != timer.phase -> timer.otherPhaseRemainingMs ?: timer.durationMs(phase)
+        timer.status == TimerStatus.RUNNING -> (timer.endAtEpochMs ?: nowMs) - nowMs
+        else -> timer.pausedRemainingMs ?: timer.durationMs(phase)
     }.coerceAtLeast(0L)
     val totalSeconds = remainingMs / 1000
     return (totalSeconds / 60).toInt() to (totalSeconds % 60).toInt()
-}
-
-// While ringing, timer.phase is still the phase that just finished --
-// stopAlarm() is what flips it once the user dismisses the alarm.
-private fun ringingLabel(timer: TimerData): String = when {
-    !timer.isPomodoro -> "Time's up!"
-    timer.phase == PomodoroPhase.WORK -> "Work session done!"
-    else -> "Break's over!"
 }
 
 @Composable
@@ -398,11 +382,13 @@ private fun SoundRow(soundId: String, onSoundChange: (String) -> Unit, onPreview
 // The work timer drops back to IDLE when stopped rather than PAUSED, so that
 // its duration fields stay editable -- "Stop" then "Start" is also how you
 // correct the time after forgetting to do either.
+//
+// A ringing timer offers Start, not Pause: for a pomodoro that's the handover
+// to the phase now indicated, and pressing it silences the alarm on the way.
 private fun startPauseLabel(status: TimerStatus, isWork: Boolean): String = when (status) {
-    TimerStatus.IDLE -> "Start"
+    TimerStatus.IDLE, TimerStatus.RINGING -> "Start"
     TimerStatus.PAUSED -> "Resume"
     TimerStatus.RUNNING -> if (isWork) "Stop" else "Pause"
-    TimerStatus.RINGING -> "Pause"
 }
 
 private fun remainingParts(timer: TimerData, nowMs: Long): Triple<Int, Int, Int> {
