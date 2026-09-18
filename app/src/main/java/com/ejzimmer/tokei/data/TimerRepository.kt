@@ -62,9 +62,7 @@ class TimerRepository(context: Context) {
             if (timer.isWorkTimer) continue
             val endAt = timer.endAtEpochMs
             if (timer.status == TimerStatus.RUNNING && endAt != null && endAt <= now) {
-                timer.status = TimerStatus.RINGING
-                timer.finishedAtEpochMs = endAt
-                timer.endAtEpochMs = null
+                timer.markFinished(endAt)
             }
         }
         return timers

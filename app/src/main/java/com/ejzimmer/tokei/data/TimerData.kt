@@ -158,6 +158,31 @@ fun parseTimerList(json: String): List<TimerData> {
 
 val TimerData.isWorkTimer: Boolean get() = id == WORK_TIMER_ID
 
+/**
+ * The one "this timer just ran out" transition, shared by every path that can
+ * discover it: the alarm firing, a skip-ahead landing on zero, and the
+ * catch-up pass for a boundary missed while the app was dead.
+ *
+ * A pomodoro hands over to its other phase right here, rather than waiting to
+ * be dismissed. Dismissal used to own the handover, which meant it never
+ * happened at all when the alarm was silenced from the notification instead of
+ * the card -- and even in the app it left the finished phase indicated, with
+ * nothing to press but Stop, while a self-silencing alarm had already gone
+ * quiet on its own.
+ */
+fun TimerData.markFinished(finishedAtEpochMs: Long) {
+    status = TimerStatus.RINGING
+    this.finishedAtEpochMs = finishedAtEpochMs
+    lastFinishedAtEpochMs = finishedAtEpochMs
+    endAtEpochMs = null
+    if (isPomodoro) {
+        phase = phase.next()
+        // The phase that just rang counted all the way down, so it starts
+        // over at its full duration next time round.
+        otherPhaseRemainingMs = null
+    }
+}
+
 /** Writes a millisecond remainder back into the h/m/s fields, which is where
  * the work timer keeps its current cycle's remaining time while stopped (and
  * therefore what the duration editor adjusts). */
