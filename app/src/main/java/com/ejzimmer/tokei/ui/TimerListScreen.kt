@@ -1,24 +1,20 @@
 package com.ejzimmer.tokei.ui
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -101,30 +97,28 @@ fun TimerListScreen(
                 }
             }
 
-            var showAddMenu by remember { mutableStateOf(false) }
-            Box {
+            // One button per kind rather than a menu: there are only two,
+            // and adding a timer shouldn't cost two taps.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                // Half the width each rather than their natural size: at a
+                // large system font scale two intrinsic-width buttons run off
+                // the side of a narrow phone.
                 Button(
-                    onClick = { showAddMenu = true },
+                    onClick = { viewModel.addTimer() },
                     colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
-                    modifier = Modifier.padding(top = 8.dp),
+                    modifier = Modifier.weight(1f),
                 ) {
-                    Text("+ Add timer")
+                    Text("+ Countdown")
                 }
-                DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Countdown timer") },
-                        onClick = {
-                            viewModel.addTimer()
-                            showAddMenu = false
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Pomodoro timer") },
-                        onClick = {
-                            viewModel.addTimer(isPomodoro = true)
-                            showAddMenu = false
-                        },
-                    )
+                Button(
+                    onClick = { viewModel.addTimer(isPomodoro = true) },
+                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("+ Pomodoro")
                 }
             }
         }

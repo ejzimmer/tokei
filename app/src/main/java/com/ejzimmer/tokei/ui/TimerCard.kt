@@ -12,10 +12,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,7 +35,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -84,15 +89,17 @@ fun TimerCard(
             Header(name = timer.name, onRename = onRename, onDelete = onDelete)
         } else {
             // Fixed name, no delete: this one is part of the app rather than
-            // a timer you made.
-            Text(
-                timer.name,
-                color = Face,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
+            // a timer you made. The day it's counting for rides on the same
+            // line, pushed to the far end, rather than taking a line of its
+            // own underneath.
+            Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            )
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(timer.name, color = Face, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(workInfo.dayLabel, color = Accent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
         }
 
         if (timer.isPomodoro) {
@@ -114,17 +121,8 @@ fun TimerCard(
             ReadOnlyDuration(h, m, s, accent = timer.status == TimerStatus.RUNNING)
         }
 
-        if (workInfo != null) {
-            Text(
-                workInfo.headline,
-                color = Accent,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-            )
-            workInfo.details.forEach { detail ->
-                Text(detail, color = FaceDim, fontSize = 12.sp, textAlign = TextAlign.Center)
-            }
+        workInfo?.details?.forEach { detail ->
+            Text(detail, color = FaceDim, fontSize = 12.sp, textAlign = TextAlign.Center)
         }
 
         timer.lastFinishedAtEpochMs?.let {
@@ -143,12 +141,6 @@ fun TimerCard(
             )
         }
 
-        // The work timer never rings and waits to be silenced -- it rolls
-        // straight into the next cycle -- so there's no alarm sound to pick.
-        if (workInfo == null) {
-            SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
-        }
-
         if (timer.isPomodoro && (timer.status == TimerStatus.RUNNING || timer.status == TimerStatus.PAUSED)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick = onSkipBack) {
@@ -165,23 +157,41 @@ fun TimerCard(
                 onClick = onReset,
                 colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
             ) {
-                Text(if (workInfo == null) "Reset" else "Reset to 7:30")
+                Icon(
+                    ResetIcon,
+                    contentDescription = if (workInfo == null) "Reset" else "Reset to 7:30",
+                    modifier = Modifier.size(20.dp),
+                )
             }
             Button(
                 onClick = onStartPause,
                 colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Background),
             ) {
-                Text(startPauseLabel(timer.status, isWork = workInfo != null))
+                Icon(
+                    if (timer.status == TimerStatus.RUNNING) PauseIcon else StartIcon,
+                    contentDescription = startPauseLabel(timer.status, isWork = workInfo != null),
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
 
         if (isRinging) {
+            // A square, not the pause bars: this one silences the alarm
+            // outright rather than holding anything mid-count.
             Button(
                 onClick = onStopAlarm,
                 colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
             ) {
-                Text("Stop")
+                Icon(StopIcon, contentDescription = "Stop", modifier = Modifier.size(20.dp))
             }
+        }
+
+        // Below the buttons: picking a tone is setup, not something you reach
+        // for mid-countdown. The work timer never rings and waits to be
+        // silenced -- it rolls straight into the next cycle -- so there's no
+        // alarm sound to pick.
+        if (workInfo == null) {
+            SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
         }
     }
 }
@@ -311,6 +321,7 @@ private fun pomodoroRemainingParts(timer: TimerData, phase: PomodoroPhase, nowMs
 @Composable
 private fun Header(name: String, onRename: (String) -> Unit, onDelete: () -> Unit) {
     var text by remember(name) { mutableStateOf(name) }
+    val focusManager = LocalFocusManager.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -330,6 +341,20 @@ private fun Header(name: String, onRename: (String) -> Unit, onDelete: () -> Uni
                     }
                 },
             singleLine = true,
+            // Enter finishes the rename: commit what's there and drop focus,
+            // which closes the keyboard. The commit is explicit rather than
+            // left to the debounce below, so a name isn't lost if the card
+            // scrolls out of composition inside that half second; the blank
+            // fallback is applied first so Enter on an empty field saves
+            // "Timer" rather than nothing.
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    if (text.isBlank()) text = "Timer"
+                    onRename(text)
+                    focusManager.clearFocus()
+                },
+            ),
             textStyle = MaterialTheme.typography.titleMedium.copy(color = Face, fontWeight = FontWeight.Bold),
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
@@ -374,7 +399,7 @@ private fun SoundRow(soundId: String, onSoundChange: (String) -> Unit, onPreview
             }
         }
         TextButton(onClick = onPreview) {
-            Text("▶", color = FaceDim, fontSize = 16.sp)
+            Icon(MusicNotesIcon, contentDescription = "Preview tone", tint = FaceDim, modifier = Modifier.size(18.dp))
         }
     }
 }
