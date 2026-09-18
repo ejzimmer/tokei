@@ -8,7 +8,7 @@ import androidx.compose.ui.unit.dp
 
 // The handful of glyphs the buttons need, drawn here rather than pulled in
 // from material-icons-extended -- that artifact carries a few thousand
-// vectors to get four of them. Every path is on the standard 24x24 icon
+// vectors to get five of them. Every path is on the standard 24x24 icon
 // grid, and the fill is a placeholder: Icon() tints them at the call site.
 
 /** Circular arrow -- the reset buttons. */
@@ -24,6 +24,9 @@ val StartIcon = iconVector("start", "M8 5v14l11-7z")
 
 /** Two bars -- pause, and the work timer's stop, which is the same act. */
 val PauseIcon = iconVector("pause", "M6 19h4V5H6v14zm8-14v14h4V5h-4z")
+
+/** A square -- silencing a ringing alarm, which stops rather than pauses. */
+val StopIcon = iconVector("stop", "M6 6h12v12H6z")
 
 /** A beamed pair of notes -- previewing a timer's tone. Three paths: the
  * stems and their beam as one outline, then a head hung off each stem. */

@@ -176,13 +176,13 @@ fun TimerCard(
         }
 
         if (isRinging) {
-            // Still words: this one silences the alarm rather than pausing
-            // anything, and it wants to be unmistakable at 3am.
+            // A square, not the pause bars: this one silences the alarm
+            // outright rather than holding anything mid-count.
             Button(
                 onClick = onStopAlarm,
                 colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
             ) {
-                Text("Stop")
+                Icon(StopIcon, contentDescription = "Stop", modifier = Modifier.size(20.dp))
             }
         }
 
