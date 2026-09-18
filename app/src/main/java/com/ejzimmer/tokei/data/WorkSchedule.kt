@@ -88,6 +88,19 @@ fun workDayLabel(day: LocalDate, today: LocalDate): String = when {
     else -> day.format(dateFormat)
 }
 
+/**
+ * The plain weekday name -- "Tuesday" -- for anything inside the week,
+ * falling back to a date beyond that. The work card pairs this with the
+ * timer's own name on one line, where [workDayLabel]'s "today" would read
+ * as part of the title rather than as the day being counted for.
+ */
+fun workDayName(day: LocalDate, today: LocalDate): String =
+    if (abs(day.toEpochDay() - today.toEpochDay()) < 7) {
+        day.format(weekdayFormat)
+    } else {
+        day.format(dateFormat)
+    }
+
 /** Hours and minutes only -- seconds are noise at this scale. */
 fun formatWorkDuration(ms: Long): String {
     val totalMinutes = (ms.coerceAtLeast(0L) + 59_999L) / 60_000L
