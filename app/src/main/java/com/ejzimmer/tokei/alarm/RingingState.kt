@@ -18,7 +18,11 @@ import com.ejzimmer.tokei.data.TimerStatus
  */
 fun clearRingingTimer(context: Context, timerId: String) {
     val repository = TimerRepository(context)
-    val timers = repository.load()
+    // loadRaw(), not load(): silencing one alarm has no business running the
+    // catch-up pass over the others. It would mark a timer that is merely due
+    // as ringing and save that here, and AlarmReceiver skips a timer it finds
+    // already ringing -- so that timer's alarm would never sound at all.
+    val timers = repository.loadRaw()
     val timer = timers.find { it.id == timerId }
     if (timer != null && timer.status == TimerStatus.RINGING) {
         timer.status = TimerStatus.IDLE
