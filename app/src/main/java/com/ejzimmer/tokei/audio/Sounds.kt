@@ -123,13 +123,20 @@ private fun waveSample(waveform: Waveform, phase: Double): Double = when (wavefo
     }
 }
 
+/** A little trailing silence, so looping the buffer doesn't feel abrupt. */
+private const val PHRASE_TAIL_MS = 400
+
+/** How long [notes] take to play through once, tail included -- which is also
+ * how long a non-looping alarm makes any noise for. */
+fun phraseDurationMs(notes: List<NoteEvent>): Int =
+    notes.maxOf { it.atMs + it.durationMs } + PHRASE_TAIL_MS
+
 /**
  * Renders a phrase to 16-bit PCM mono samples at [SAMPLE_RATE], with a little
  * trailing silence so looping the buffer doesn't feel abrupt.
  */
 fun renderPhrase(notes: List<NoteEvent>): ShortArray {
-    val spanMs = notes.maxOf { it.atMs + it.durationMs }
-    val totalMs = spanMs + 400
+    val totalMs = phraseDurationMs(notes)
     val totalSamples = totalMs * SAMPLE_RATE / 1000
     val buffer = FloatArray(totalSamples)
 

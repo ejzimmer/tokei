@@ -8,7 +8,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -17,6 +19,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.ejzimmer.tokei.MainActivity
 import com.ejzimmer.tokei.R
 import com.ejzimmer.tokei.audio.AlarmPlayer
+import com.ejzimmer.tokei.audio.phraseDurationMs
 import com.ejzimmer.tokei.audio.soundById
 
 /**
@@ -32,6 +35,8 @@ class AlarmService : Service() {
     private val ringing = mutableMapOf<String, Ringing>()
     private var vibrator: Vibrator? = null
     private var anchorTimerId: String? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val selfClears = mutableMapOf<String, Runnable>()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -50,6 +55,8 @@ class AlarmService : Service() {
     }
 
     override fun onDestroy() {
+        selfClears.values.forEach { handler.removeCallbacks(it) }
+        selfClears.clear()
         ringing.values.forEach { it.player.stop() }
         ringing.clear()
         vibrator?.cancel()
@@ -64,6 +71,7 @@ class AlarmService : Service() {
         }
         ringing[timerId] = Ringing(name, player, sound.loop)
         restartVibration()
+        if (!sound.loop) scheduleSelfClear(timerId, phraseDurationMs(sound.notes).toLong())
 
         val notification = buildNotification(timerId, name)
         val currentAnchor = anchorTimerId
@@ -75,7 +83,30 @@ class AlarmService : Service() {
         }
     }
 
+    /**
+     * A sound that plays once leaves nothing to silence once it's over, so the
+     * timer bows out of ringing by itself when the phrase ends rather than
+     * leaving a Stop to press later. Nothing is lost by it: "last finished"
+     * still records when it went off, and a pomodoro has already handed over
+     * to its next phase, waiting on Start.
+     */
+    private fun scheduleSelfClear(timerId: String, delayMs: Long) {
+        cancelSelfClear(timerId)
+        val clear = Runnable {
+            selfClears.remove(timerId)
+            clearRingingTimer(this, timerId)
+            stopOne(timerId)
+        }
+        selfClears[timerId] = clear
+        handler.postDelayed(clear, delayMs)
+    }
+
+    private fun cancelSelfClear(timerId: String) {
+        selfClears.remove(timerId)?.let { handler.removeCallbacks(it) }
+    }
+
     private fun stopOne(timerId: String) {
+        cancelSelfClear(timerId)
         ringing.remove(timerId)?.player?.stop()
         NotificationManagerCompat.from(this).cancel(timerId.hashCode())
 
