@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -100,17 +101,22 @@ fun TimerListScreen(
             // and adding a timer shouldn't cost two taps.
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             ) {
+                // Half the width each rather than their natural size: at a
+                // large system font scale two intrinsic-width buttons run off
+                // the side of a narrow phone.
                 Button(
                     onClick = { viewModel.addTimer() },
                     colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
+                    modifier = Modifier.weight(1f),
                 ) {
                     Text("+ Countdown")
                 }
                 Button(
                     onClick = { viewModel.addTimer(isPomodoro = true) },
                     colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
+                    modifier = Modifier.weight(1f),
                 ) {
                     Text("+ Pomodoro")
                 }

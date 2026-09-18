@@ -341,10 +341,20 @@ private fun Header(name: String, onRename: (String) -> Unit, onDelete: () -> Uni
                     }
                 },
             singleLine = true,
-            // Enter finishes the rename: it drops focus, which closes the
-            // keyboard and runs the same blank-name fallback as tapping away.
+            // Enter finishes the rename: commit what's there and drop focus,
+            // which closes the keyboard. The commit is explicit rather than
+            // left to the debounce below, so a name isn't lost if the card
+            // scrolls out of composition inside that half second; the blank
+            // fallback is applied first so Enter on an empty field saves
+            // "Timer" rather than nothing.
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    if (text.isBlank()) text = "Timer"
+                    onRename(text)
+                    focusManager.clearFocus()
+                },
+            ),
             textStyle = MaterialTheme.typography.titleMedium.copy(color = Face, fontWeight = FontWeight.Bold),
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
