@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
@@ -20,9 +21,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
@@ -41,6 +46,9 @@ fun formatHms(hours: Int, minutes: Int, seconds: Int): String =
  * 11 -- the same "microwave keypad" entry the web version used. Each
  * onDigit/onBackspace call reports the raw keystroke; the ViewModel owns the
  * actual shift-and-carry math so the same rules apply everywhere.
+ *
+ * Enter in any box calls [onSubmit] -- the card starts the timer with it.
+ * [focusRequester], if given, is attached to the first box.
  */
 @Composable
 fun EditableDurationFields(
@@ -49,14 +57,16 @@ fun EditableDurationFields(
     seconds: Int,
     onDigit: (DurationField, Int) -> Unit,
     onBackspace: (DurationField) -> Unit,
+    onSubmit: () -> Unit,
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
 ) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        DigitShiftField(pad2(hours), DurationField.HOURS, onDigit, onBackspace)
+        DigitShiftField(pad2(hours), DurationField.HOURS, onDigit, onBackspace, onSubmit, focusRequester = focusRequester)
         ClockColon()
-        DigitShiftField(pad2(minutes), DurationField.MINUTES, onDigit, onBackspace)
+        DigitShiftField(pad2(minutes), DurationField.MINUTES, onDigit, onBackspace, onSubmit)
         ClockColon()
-        DigitShiftField(pad2(seconds), DurationField.SECONDS, onDigit, onBackspace)
+        DigitShiftField(pad2(seconds), DurationField.SECONDS, onDigit, onBackspace, onSubmit)
     }
 }
 
@@ -69,12 +79,17 @@ fun EditableDurationFieldsMmSs(
     seconds: Int,
     onDigit: (DurationField, Int) -> Unit,
     onBackspace: (DurationField) -> Unit,
+    onSubmit: () -> Unit,
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
 ) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        DigitShiftField(pad2(minutes), DurationField.MINUTES, onDigit, onBackspace, boxWidth = 52.dp, fontSize = 24.sp)
+        DigitShiftField(
+            pad2(minutes), DurationField.MINUTES, onDigit, onBackspace, onSubmit,
+            boxWidth = 52.dp, fontSize = 24.sp, focusRequester = focusRequester,
+        )
         ClockColon(fontSize = 24.sp)
-        DigitShiftField(pad2(seconds), DurationField.SECONDS, onDigit, onBackspace, boxWidth = 52.dp, fontSize = 24.sp)
+        DigitShiftField(pad2(seconds), DurationField.SECONDS, onDigit, onBackspace, onSubmit, boxWidth = 52.dp, fontSize = 24.sp)
     }
 }
 
@@ -94,8 +109,10 @@ private fun DigitShiftField(
     field: DurationField,
     onDigit: (DurationField, Int) -> Unit,
     onBackspace: (DurationField) -> Unit,
+    onSubmit: () -> Unit,
     boxWidth: Dp = 72.dp,
     fontSize: TextUnit = 32.sp,
+    focusRequester: FocusRequester? = null,
 ) {
     // A plain Material TextField reserves a lot of internal padding for a
     // normal form field, which left almost no room for two bold 32sp digits
@@ -117,6 +134,7 @@ private fun DigitShiftField(
     val fieldValue = remember(value, revision) {
         TextFieldValue(text = value, selection = TextRange(value.length))
     }
+    val focusManager = LocalFocusManager.current
     BasicTextField(
         value = fieldValue,
         onValueChange = { newValue ->
@@ -128,7 +146,9 @@ private fun DigitShiftField(
             }
             revision++
         },
-        modifier = Modifier.width(boxWidth),
+        modifier = Modifier
+            .width(boxWidth)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
         singleLine = true,
         textStyle = LocalTextStyle.current.copy(
             fontSize = fontSize,
@@ -137,7 +157,16 @@ private fun DigitShiftField(
             color = Face,
         ),
         cursorBrush = SolidColor(Accent),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        // Enter starts the timer. Dropping focus closes the keyboard, which
+        // would otherwise hang around over a card that has nothing left to
+        // type into.
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Go),
+        keyboardActions = KeyboardActions(
+            onGo = {
+                focusManager.clearFocus()
+                onSubmit()
+            },
+        ),
         decorationBox = { innerTextField ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(

@@ -8,13 +8,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,6 +40,16 @@ fun TimerListScreen(
     val timers by viewModel.timers.collectAsState()
     val nowMs by viewModel.clockTick.collectAsState()
     val workState by viewModel.workState.collectAsState()
+    val listState = rememberLazyListState()
+    // The timer just added with a button below, until its card has taken
+    // focus. New timers go on the end of the list, which on a full screen is
+    // out of sight -- so scroll it in first; the card grabs focus once it's
+    // composed.
+    var newTimerId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(newTimerId) {
+        val index = timers.indexOfFirst { it.id == newTimerId }
+        if (index >= 0) listState.animateScrollToItem(index)
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Background) {
         Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
@@ -62,6 +77,7 @@ fun TimerListScreen(
             }
 
             LazyColumn(
+                state = listState,
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.weight(1f),
             ) {
@@ -93,6 +109,8 @@ fun TimerListScreen(
                         onSkipBack = { viewModel.skipBack(timer.id) },
                         onSkipForward = { viewModel.skipForward(timer.id) },
                         onSelectPhase = { phase -> viewModel.selectPhase(timer.id, phase) },
+                        autoFocus = timer.id == newTimerId,
+                        onAutoFocused = { newTimerId = null },
                     )
                 }
             }
@@ -107,14 +125,14 @@ fun TimerListScreen(
                 // large system font scale two intrinsic-width buttons run off
                 // the side of a narrow phone.
                 Button(
-                    onClick = { viewModel.addTimer() },
+                    onClick = { newTimerId = viewModel.addTimer() },
                     colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
                     modifier = Modifier.weight(1f),
                 ) {
                     Text("+ Countdown")
                 }
                 Button(
-                    onClick = { viewModel.addTimer(isPomodoro = true) },
+                    onClick = { newTimerId = viewModel.addTimer(isPomodoro = true) },
                     colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
                     modifier = Modifier.weight(1f),
                 ) {
