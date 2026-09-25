@@ -120,16 +120,19 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         persist()
     }
 
-    fun addTimer(isPomodoro: Boolean = false) {
+    /** Returns the new timer's id, so the UI can bring it into view. */
+    fun addTimer(isPomodoro: Boolean = false): String {
         val list = _timers.value.toMutableList()
         val name = if (isPomodoro) {
             "Pomodoro ${list.count { it.isPomodoro } + 1}"
         } else {
             "Timer ${list.count { !it.isWorkTimer && !it.isPomodoro } + 1}"
         }
-        list.add(repository.createTimer(name, isPomodoro))
+        val timer = repository.createTimer(name, isPomodoro)
+        list.add(timer)
         _timers.value = list
         persist()
+        return timer.id
     }
 
     fun deleteTimer(timerId: String) {

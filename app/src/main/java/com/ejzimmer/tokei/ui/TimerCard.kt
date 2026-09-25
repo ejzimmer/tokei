@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
@@ -68,7 +69,21 @@ fun TimerCard(
     onSkipForward: () -> Unit = {},
     onSelectPhase: (PomodoroPhase) -> Unit = {},
     workInfo: WorkCardInfo? = null,
+    autoFocus: Boolean = false,
+    onAutoFocused: () -> Unit = {},
 ) {
+    // A freshly added timer takes focus in its first duration box -- setting
+    // the time is the next thing to do with it, and the focused box pulls
+    // the card into view above the keyboard.
+    val firstFieldFocus = remember { FocusRequester() }
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) {
+            // Only an idle timer has duration boxes to focus; a new one
+            // always is, but don't crash if that ever stops being true.
+            runCatching { firstFieldFocus.requestFocus() }
+            onAutoFocused()
+        }
+    }
     val isRinging = timer.status == TimerStatus.RINGING
     val borderColor = when (timer.status) {
         TimerStatus.RUNNING -> Accent
@@ -109,12 +124,17 @@ fun TimerCard(
                 onSelectPhase = onSelectPhase,
                 onDigit = onDigit,
                 onBackspace = onBackspace,
+                onSubmit = onStartPause,
+                firstFieldFocus = firstFieldFocus,
             )
         } else if (timer.status == TimerStatus.IDLE) {
             EditableDurationFields(
                 timer.hours, timer.minutes, timer.seconds,
                 onDigit = { field, digit -> onDigit(PomodoroPhase.WORK, field, digit) },
                 onBackspace = { field -> onBackspace(PomodoroPhase.WORK, field) },
+                // Only editable while idle, so this is always a Start.
+                onSubmit = onStartPause,
+                focusRequester = firstFieldFocus,
             )
         } else {
             val (h, m, s) = remainingParts(timer, nowMs)
@@ -209,6 +229,8 @@ private fun PomodoroDualDisplay(
     onSelectPhase: (PomodoroPhase) -> Unit,
     onDigit: (PomodoroPhase, DurationField, Int) -> Unit,
     onBackspace: (PomodoroPhase, DurationField) -> Unit,
+    onSubmit: () -> Unit,
+    firstFieldFocus: FocusRequester,
 ) {
     val editable = timer.status == TimerStatus.IDLE
     val (workMinutes, workSeconds) = if (editable) {
@@ -235,6 +257,8 @@ private fun PomodoroDualDisplay(
             onSelect = { onSelectPhase(PomodoroPhase.WORK) },
             onDigit = { field, digit -> onDigit(PomodoroPhase.WORK, field, digit) },
             onBackspace = { field -> onBackspace(PomodoroPhase.WORK, field) },
+            onSubmit = onSubmit,
+            focusRequester = firstFieldFocus,
         )
         PomodoroPhaseColumn(
             label = "Rest",
@@ -246,6 +270,7 @@ private fun PomodoroDualDisplay(
             onSelect = { onSelectPhase(PomodoroPhase.REST) },
             onDigit = { field, digit -> onDigit(PomodoroPhase.REST, field, digit) },
             onBackspace = { field -> onBackspace(PomodoroPhase.REST, field) },
+            onSubmit = onSubmit,
         )
     }
 }
@@ -261,6 +286,8 @@ private fun PomodoroPhaseColumn(
     onSelect: () -> Unit,
     onDigit: (DurationField, Int) -> Unit,
     onBackspace: (DurationField) -> Unit,
+    onSubmit: () -> Unit,
+    focusRequester: FocusRequester? = null,
 ) {
     Column(
         modifier = Modifier
@@ -278,7 +305,7 @@ private fun PomodoroPhaseColumn(
             fontWeight = FontWeight.Bold,
         )
         if (editable) {
-            EditableDurationFieldsMmSs(minutes, seconds, onDigit, onBackspace)
+            EditableDurationFieldsMmSs(minutes, seconds, onDigit, onBackspace, onSubmit, focusRequester = focusRequester)
         } else {
             ReadOnlyDurationMmSs(minutes, seconds, accent = isRunning)
         }
