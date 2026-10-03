@@ -24,7 +24,10 @@ import com.ejzimmer.tokei.data.isWorkTimer
 import com.ejzimmer.tokei.data.localDateOf
 import com.ejzimmer.tokei.data.markFinished
 import com.ejzimmer.tokei.data.reconciled
+import com.ejzimmer.tokei.data.runStarted
+import com.ejzimmer.tokei.data.runStopped
 import com.ejzimmer.tokei.data.setRemainingMs
+import com.ejzimmer.tokei.data.withHeadRemainingEdited
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -190,7 +193,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         // Only meaningful while stopped; mid-countdown the fields are a stale
         // snapshot and copying them into the ledger would lose real time.
         if (timer.status != TimerStatus.IDLE) return
-        setWorkState(_workState.value.copy(headRemainingMs = timer.durationMs()))
+        setWorkState(_workState.value.withHeadRemainingEdited(timer.durationMs(), LocalDate.now()))
     }
 
     fun start(timerId: String) {
@@ -376,12 +379,15 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         // While stopped, the duration fields are the live remaining time --
         // including any adjustment just typed into them.
         val remaining = timer.durationMs().takeIf { it > 0L } ?: WorkSchedule.CYCLE_MS
+        val today = LocalDate.now()
+        val now = System.currentTimeMillis()
         val state = _workState.value
-            .copy(headRemainingMs = remaining)
-            .claimedForStart(LocalDate.now())
+            .withHeadRemainingEdited(remaining, today)
+            .claimedForStart(today)
+            .runStarted(today, now)
         setWorkState(state)
 
-        val endAt = System.currentTimeMillis() + state.headRemainingMs
+        val endAt = now + state.headRemainingMs
         mutate(timer.id) {
             it.endAtEpochMs = endAt
             it.pausedRemainingMs = null
@@ -407,8 +413,13 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         AlarmScheduler.cancel(context, timer.id)
         CountdownNotifier.cancel(context, timer.id)
 
-        val remaining = (endAt - System.currentTimeMillis()).coerceAtLeast(0L)
-        setWorkState(_workState.value.copy(headRemainingMs = remaining))
+        val now = System.currentTimeMillis()
+        val remaining = (endAt - now).coerceAtLeast(0L)
+        setWorkState(
+            _workState.value
+                .copy(headRemainingMs = remaining)
+                .runStopped(LocalDate.now(), now),
+        )
         mutate(timer.id) {
             it.status = TimerStatus.IDLE
             it.endAtEpochMs = null
@@ -422,11 +433,20 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     private fun resetWork() {
         val timer = _timers.value.find { it.isWorkTimer } ?: return
         val context = getApplication<Application>()
+        val today = LocalDate.now()
+        val now = System.currentTimeMillis()
+        var state = _workState.value
+        val endAt = timer.endAtEpochMs
         if (timer.status == TimerStatus.RUNNING) {
             AlarmScheduler.cancel(context, timer.id)
             CountdownNotifier.cancel(context, timer.id)
+            // Bank the run first, so the reset only takes back the time the
+            // main counter actually loses.
+            state = state
+                .copy(headRemainingMs = ((endAt ?: now) - now).coerceAtLeast(0L))
+                .runStopped(today, now)
         }
-        setWorkState(_workState.value.copy(headRemainingMs = WorkSchedule.CYCLE_MS))
+        setWorkState(state.withHeadRemainingEdited(WorkSchedule.CYCLE_MS, today))
         mutate(timer.id) {
             it.status = TimerStatus.IDLE
             it.endAtEpochMs = null

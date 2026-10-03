@@ -45,6 +45,15 @@ it can run continuously through a long day.
   than discarding it. While stopped the duration is editable, so forgetting
   to start or stop is fixed by correcting the number. An adjustment applies
   to the cycle you're in; every later cycle is a full 7.5 hours again.
+- **A today counter underneath.** Smaller than the main counter, it counts
+  down today's 7.5 hours from whatever time you've actually worked since
+  midnight, and goes negative (with a minus sign) once you're into
+  overtime. It starts over at 7:30 every day. It can't be edited directly:
+  any correction to the main counter while stopped is reflected in it, so
+  taking 20 minutes off the main counter adds 20 minutes worked today.
+- **When it last changed.** Under the today counter, "Paused at 12:30 PM"
+  or "Resumed at 1:15 PM" shows when the timer was last stopped or started
+  (with the weekday if that was before today).
 - **Two nudges.** Not started by 8:30 on a Tuesday-to-Friday sends a
   reminder; the weekend and Monday are skipped outright. Still running at
   18:30 asks whether you forgot to stop -- that one has no day filter

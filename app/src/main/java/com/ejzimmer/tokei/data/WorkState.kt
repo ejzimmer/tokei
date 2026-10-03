@@ -3,6 +3,7 @@ package com.ejzimmer.tokei.data
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
+import java.time.ZoneId
 
 const val WORK_TIMER_ID = "tokei-work-timer"
 const val WORK_TIMER_NAME = "Work"
@@ -47,6 +48,10 @@ data class WorkState(
     val headRemainingMs: Long = WorkSchedule.CYCLE_MS,
     val lastCycleDayEpoch: Long? = null,
     val lastStartedDayEpoch: Long? = null,
+    val todayEpoch: Long? = null,
+    val todayBankedMs: Long = 0L,
+    val runStartedAtEpochMs: Long? = null,
+    val lastToggledAtEpochMs: Long? = null,
 ) {
     val headDay: LocalDate?
         get() = cycles.firstOrNull()?.let { LocalDate.ofEpochDay(it.dayEpoch) }
@@ -56,6 +61,27 @@ data class WorkState(
         if (cycles.isEmpty()) 0L
         else headRemainingMs + (cycles.size - 1) * WorkSchedule.CYCLE_MS
 
+    /**
+     * Time worked on [today] so far: everything banked from earlier runs and
+     * edits today, plus whatever part of the current run falls after
+     * midnight. Measured by the clock rather than by the cycle countdown, so
+     * a cycle rolling over mid-run doesn't disturb it.
+     */
+    fun workedTodayMs(today: LocalDate, nowMs: Long): Long {
+        val banked = if (todayEpoch == today.toEpochDay()) todayBankedMs else 0L
+        val running = runStartedAtEpochMs?.let { started ->
+            (nowMs - maxOf(started, startOfDayMs(today))).coerceAtLeast(0L)
+        } ?: 0L
+        // Never below zero: adding back more than was worked today (say,
+        // resetting a cycle left over from yesterday) can't make today longer
+        // than 7.5 hours.
+        return (banked + running).coerceAtLeast(0L)
+    }
+
+    /** The today counter: a 7.5-hour day counting down, negative once it's done. */
+    fun todayRemainingMs(today: LocalDate, nowMs: Long): Long =
+        WorkSchedule.CYCLE_MS - workedTodayMs(today, nowMs)
+
     fun startedOn(day: LocalDate): Boolean = lastStartedDayEpoch == day.toEpochDay()
 
     fun toJson(): JSONObject = JSONObject().apply {
@@ -63,6 +89,10 @@ data class WorkState(
         put("headRemainingMs", headRemainingMs)
         put("lastCycleDayEpoch", lastCycleDayEpoch ?: JSONObject.NULL)
         put("lastStartedDayEpoch", lastStartedDayEpoch ?: JSONObject.NULL)
+        put("todayEpoch", todayEpoch ?: JSONObject.NULL)
+        put("todayBankedMs", todayBankedMs)
+        put("runStartedAtEpochMs", runStartedAtEpochMs ?: JSONObject.NULL)
+        put("lastToggledAtEpochMs", lastToggledAtEpochMs ?: JSONObject.NULL)
     }
 
     companion object {
@@ -73,6 +103,10 @@ data class WorkState(
                 headRemainingMs = json.optLong("headRemainingMs", WorkSchedule.CYCLE_MS),
                 lastCycleDayEpoch = if (json.isNull("lastCycleDayEpoch")) null else json.optLong("lastCycleDayEpoch"),
                 lastStartedDayEpoch = if (json.isNull("lastStartedDayEpoch")) null else json.optLong("lastStartedDayEpoch"),
+                todayEpoch = if (json.isNull("todayEpoch")) null else json.optLong("todayEpoch"),
+                todayBankedMs = json.optLong("todayBankedMs", 0L),
+                runStartedAtEpochMs = if (json.isNull("runStartedAtEpochMs")) null else json.optLong("runStartedAtEpochMs"),
+                lastToggledAtEpochMs = if (json.isNull("lastToggledAtEpochMs")) null else json.optLong("lastToggledAtEpochMs"),
             )
         }
 
@@ -80,6 +114,44 @@ data class WorkState(
             runCatching { fromJson(JSONObject(raw)) }.getOrDefault(WorkState())
     }
 }
+
+private fun startOfDayMs(day: LocalDate): Long =
+    day.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+/** Today's banked time, discarding a previous day's. */
+private fun WorkState.bankedFor(today: LocalDate): Long =
+    if (todayEpoch == today.toEpochDay()) todayBankedMs else 0L
+
+/** The timer just started running at [nowMs]. */
+fun WorkState.runStarted(today: LocalDate, nowMs: Long): WorkState = copy(
+    todayEpoch = today.toEpochDay(),
+    todayBankedMs = bankedFor(today),
+    runStartedAtEpochMs = nowMs,
+    lastToggledAtEpochMs = nowMs,
+)
+
+/** The timer just stopped at [nowMs]: banks today's share of the run. */
+fun WorkState.runStopped(today: LocalDate, nowMs: Long): WorkState = copy(
+    todayEpoch = today.toEpochDay(),
+    todayBankedMs = workedTodayMs(today, nowMs),
+    runStartedAtEpochMs = null,
+    lastToggledAtEpochMs = nowMs,
+)
+
+/**
+ * The current cycle's remaining time was changed by hand (typed in, or reset
+ * to 7.5 hours). Taking time off the main counter counts as time worked
+ * today, and adding it back un-works it, which is what keeps the today
+ * counter following every correction made to the main one.
+ */
+fun WorkState.withHeadRemainingEdited(newRemainingMs: Long, today: LocalDate): WorkState = copy(
+    headRemainingMs = newRemainingMs,
+    todayEpoch = today.toEpochDay(),
+    // Deliberately not clamped here: the duration editor changes the counter
+    // one keystroke at a time, so an intermediate value can briefly add back
+    // far more than was worked, and the next keystroke has to undo it exactly.
+    todayBankedMs = bankedFor(today) + (headRemainingMs - newRemainingMs),
+)
 
 /**
  * Rolls a provisional cycle forward past days that turned out to be days off.

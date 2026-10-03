@@ -141,6 +141,20 @@ fun TimerCard(
             ReadOnlyDuration(h, m, s, accent = timer.status == TimerStatus.RUNNING)
         }
 
+        workInfo?.let { info ->
+            // Secondary to the main counter: smaller and dimmer, and never
+            // editable -- it's derived from the main counter's history.
+            Text(
+                "Today ${formatSignedHms(info.todayRemainingMs)}",
+                color = if (info.todayRemainingMs < 0L) Accent else FaceDim,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            info.lastToggleLabel?.let {
+                Text(it, color = FaceDim, fontSize = 12.sp)
+            }
+        }
+
         workInfo?.details?.forEach { detail ->
             Text(detail, color = FaceDim, fontSize = 12.sp, textAlign = TextAlign.Center)
         }
@@ -454,6 +468,17 @@ private fun remainingParts(timer: TimerData, nowMs: Long): Triple<Int, Int, Int>
     val minutes = ((totalSeconds % 3600) / 60).toInt()
     val seconds = (totalSeconds % 60).toInt()
     return Triple(hours, minutes, seconds)
+}
+
+/** hh:mm:ss like the main counter, with a minus sign once it's overtime. */
+private fun formatSignedHms(ms: Long): String {
+    val totalSeconds = kotlin.math.abs(ms) / 1000
+    val text = formatHms(
+        (totalSeconds / 3600).toInt(),
+        ((totalSeconds % 3600) / 60).toInt(),
+        (totalSeconds % 60).toInt(),
+    )
+    return if (ms <= -1000L) "−$text" else text
 }
 
 private val clockFormat by lazy { SimpleDateFormat("h:mm a", Locale.getDefault()) }
