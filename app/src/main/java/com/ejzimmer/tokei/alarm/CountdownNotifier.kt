@@ -24,7 +24,15 @@ object CountdownNotifier {
     // AlarmService's ringing-notification id for the same timer.
     private const val ID_SALT = 0x636f756e // "coun"
 
-    fun show(context: Context, timerId: String, name: String, endAtEpochMs: Long) {
+    fun show(context: Context, timerId: String, name: String, endAtEpochMs: Long) =
+        post(context, timerId, name, endAtEpochMs, countDown = true)
+
+    /** A running stopwatch's equivalent: the same chronometer, counting up
+     * from the moment it (effectively) started. */
+    fun showStopwatch(context: Context, timerId: String, name: String, startAtEpochMs: Long) =
+        post(context, timerId, name, startAtEpochMs, countDown = false)
+
+    private fun post(context: Context, timerId: String, name: String, whenEpochMs: Long, countDown: Boolean) {
         ensureChannel(context)
 
         val openAppIntent = PendingIntent.getActivity(
@@ -39,14 +47,18 @@ object CountdownNotifier {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(name)
-            .setContentText(context.getString(R.string.notification_countdown_body))
+            .setContentText(
+                context.getString(
+                    if (countDown) R.string.notification_countdown_body else R.string.notification_stopwatch_body,
+                ),
+            )
             .setContentIntent(openAppIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(true)
             .setUsesChronometer(true)
-            .setChronometerCountDown(true)
-            .setWhen(endAtEpochMs)
+            .setChronometerCountDown(countDown)
+            .setWhen(whenEpochMs)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()

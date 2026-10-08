@@ -46,6 +46,7 @@ import com.ejzimmer.tokei.audio.SOUNDS
 import com.ejzimmer.tokei.data.PomodoroPhase
 import com.ejzimmer.tokei.data.TimerData
 import com.ejzimmer.tokei.data.TimerStatus
+import com.ejzimmer.tokei.data.stopwatchElapsedAt
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -117,7 +118,17 @@ fun TimerCard(
             }
         }
 
-        if (timer.isPomodoro) {
+        if (timer.isStopwatch) {
+            // Counts up, so there's nothing to set: the same big read-only
+            // clock a running countdown shows, from zero.
+            val totalSeconds = timer.stopwatchElapsedAt(nowMs) / 1000
+            ReadOnlyDuration(
+                (totalSeconds / 3600).toInt(),
+                ((totalSeconds % 3600) / 60).toInt(),
+                (totalSeconds % 60).toInt(),
+                accent = timer.status == TimerStatus.RUNNING,
+            )
+        } else if (timer.isPomodoro) {
             PomodoroDualDisplay(
                 timer = timer,
                 nowMs = nowMs,
@@ -209,8 +220,8 @@ fun TimerCard(
         // Below the buttons: picking a tone is setup, not something you reach
         // for mid-countdown. The work timer never rings and waits to be
         // silenced -- it rolls straight into the next cycle -- so there's no
-        // alarm sound to pick.
-        if (workInfo == null) {
+        // alarm sound to pick, and neither does a stopwatch, which never ends.
+        if (workInfo == null && !timer.isStopwatch) {
             SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
         }
     }

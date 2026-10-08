@@ -9,6 +9,7 @@
     <string name="notification_channel_name_countdown">Timer running</string>
     <string name="notification_channel_description_countdown">Ongoing time-remaining notice while a Tokei timer counts down</string>
     <string name="notification_countdown_body">Time remaining</string>
+    <string name="notification_stopwatch_body">Time elapsed</string>
 
     <string name="notification_channel_name_work_cycle">Work day complete</string>
     <string name="notification_channel_description_work_cycle">Fires when the work timer finishes a day\'s 7.5 hours and rolls into the next</string>

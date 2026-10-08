@@ -2,6 +2,7 @@ package com.ejzimmer.tokei.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ejzimmer.tokei.data.RunCounts
+import com.ejzimmer.tokei.data.TimerKind
 import com.ejzimmer.tokei.data.TimerStatus
 import com.ejzimmer.tokei.data.isWorkTimer
 import java.time.LocalDate
@@ -115,28 +117,29 @@ fun TimerListScreen(
                 }
             }
 
-            // One button per kind rather than a menu: there are only two,
+            // One button per kind rather than a menu: there are only three,
             // and adding a timer shouldn't cost two taps.
             Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             ) {
-                // Half the width each rather than their natural size: at a
-                // large system font scale two intrinsic-width buttons run off
-                // the side of a narrow phone.
-                Button(
-                    onClick = { newTimerId = viewModel.addTimer() },
-                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("+ Countdown")
-                }
-                Button(
-                    onClick = { newTimerId = viewModel.addTimer(isPomodoro = true) },
-                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("+ Pomodoro")
+                // An equal share of the width each rather than their natural
+                // size: at a large system font scale intrinsic-width buttons
+                // run off the side of a narrow phone. Slimmer side padding
+                // than the default so three labels still fit side by side.
+                listOf(
+                    TimerKind.COUNTDOWN to "+ Countdown",
+                    TimerKind.POMODORO to "+ Pomodoro",
+                    TimerKind.STOPWATCH to "+ Stopwatch",
+                ).forEach { (kind, label) ->
+                    Button(
+                        onClick = { newTimerId = viewModel.addTimer(kind) },
+                        colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(label)
+                    }
                 }
             }
         }
