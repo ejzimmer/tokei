@@ -87,9 +87,9 @@ fun TimerListScreen(
                         workInfo = if (timer.isWorkTimer) {
                             workCardInfo(
                                 state = workState,
+                                timer = timer,
                                 today = LocalDate.now(),
                                 nowMs = nowMs,
-                                isRunning = timer.status == TimerStatus.RUNNING,
                             )
                         } else {
                             null

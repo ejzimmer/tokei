@@ -237,7 +237,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun reset(timerId: String) {
-        if (timerId == WORK_TIMER_ID) return resetWork()
+        // The work card has no reset: its time is corrected by typing over it.
+        if (timerId == WORK_TIMER_ID) return
         val timer = _timers.value.find { it.id == timerId } ?: return
         val context = getApplication<Application>()
         if (timer.status == TimerStatus.RUNNING) {
@@ -428,33 +429,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Puts this cycle back to a full 7.5 hours without touching which day
-     * it counts for, or any day queued behind it. */
-    private fun resetWork() {
-        val timer = _timers.value.find { it.isWorkTimer } ?: return
-        val context = getApplication<Application>()
-        val today = LocalDate.now()
-        val now = System.currentTimeMillis()
-        var state = _workState.value
-        val endAt = timer.endAtEpochMs
-        if (timer.status == TimerStatus.RUNNING) {
-            AlarmScheduler.cancel(context, timer.id)
-            CountdownNotifier.cancel(context, timer.id)
-            // Bank the run first, so the reset only takes back the time the
-            // main counter actually loses.
-            state = state
-                .copy(headRemainingMs = ((endAt ?: now) - now).coerceAtLeast(0L))
-                .runStopped(today, now)
-        }
-        setWorkState(state.withHeadRemainingEdited(WorkSchedule.CYCLE_MS, today))
-        mutate(timer.id) {
-            it.status = TimerStatus.IDLE
-            it.endAtEpochMs = null
-            it.pausedRemainingMs = null
-            it.setRemainingMs(WorkSchedule.CYCLE_MS)
-        }
-    }
-
     /**
      * Brings the ledger up to date on open and at each midnight: retires days
      * that went by unworked, and books any cycle boundaries that passed while
@@ -476,8 +450,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
         var state = _workState.value
         var boundary = endAt
+        var finishedAt = endAt
         var completed = 0
         do {
+            finishedAt = boundary
             state = state.cycleCompleted(localDateOf(boundary))
             boundary += state.headRemainingMs
             completed++
@@ -487,6 +463,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         val newEndAt = boundary
         mutate(timer.id) {
             it.endAtEpochMs = newEndAt
+            it.lastFinishedAtEpochMs = finishedAt
             it.setRemainingMs(state.headRemainingMs)
         }
         val context = getApplication<Application>()
