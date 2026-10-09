@@ -31,8 +31,16 @@ work week of 7.5-hour days. Unlike the other timers it doesn't ring and stop
 at zero -- it books the finished day and rolls straight into the next one, so
 it can run continuously through a long day.
 
-- **It counts toward a specific day.** The card's title line always says
-  which one -- "Work" on the left, "Wednesday" on the right. Pass 7.5
+- **One dial.** The card is a pair of rings around the start/stop button.
+  The thick outer ring fills as the day being counted down is worked off;
+  the thin inner ring fills with today's 7.5 hours and laps in green once
+  you're into overtime. Beside it sit the counter, the time it was last
+  started (▶) or stopped (❚❚), and a flag with the time the outer ring will
+  fill if you take no more breaks. Once that ring has filled and the timer
+  has moved on to a later day, the flag turns green and keeps showing when
+  it filled. Times are 24-hour.
+- **It counts toward a specific day.** The day's name sits above the
+  counter. Pass 7.5
   hours on Tuesday and the overflow starts counting toward Wednesday; stop
   2.5 hours short and Wednesday starts by finishing Tuesday off before
   Wednesday's own 7.5 begins. You can be several days ahead or behind
@@ -43,8 +51,13 @@ it can run continuously through a long day.
   Wednesday leaves 10 hours to work on Thursday, not 17.5.
 - **Stop and start freely.** Stopping banks what's left of the cycle rather
   than discarding it. While stopped the duration is editable, so forgetting
-  to start or stop is fixed by correcting the number. An adjustment applies
+  to start or stop is fixed by correcting the number (there's no reset
+  button). An adjustment applies
   to the cycle you're in; every later cycle is a full 7.5 hours again.
+- **Today, separately.** The inner ring counts what you've actually worked
+  since midnight and starts over every day. Any correction to the counter
+  while stopped is reflected in it, so taking 20 minutes off the counter
+  adds 20 minutes worked today.
 - **Two nudges.** Not started by 8:30 on a Tuesday-to-Friday sends a
   reminder; the weekend and Monday are skipped outright. Still running at
   18:30 asks whether you forgot to stop -- that one has no day filter

@@ -13,6 +13,9 @@ val FaceDim = Color(0xFF9D9DB0)
 val Accent = Color(0xFFFF6B35)
 val Danger = Color(0xFFFF3B30)
 
+/** Today's 7.5 hours are done: the work dial's overtime lap, and the time its ring filled. */
+val Done = Color(0xFF4FD1A5)
+
 private val TokeiColorScheme = darkColorScheme(
     background = Background,
     surface = Surface,

@@ -25,6 +25,9 @@ val StartIcon = iconVector("start", "M8 5v14l11-7z")
 /** Two bars -- pause, and the work timer's stop, which is the same act. */
 val PauseIcon = iconVector("pause", "M6 19h4V5H6v14zm8-14v14h4V5h-4z")
 
+/** A flag on a pole -- when the work dial's ring fills. */
+val FlagIcon = iconVector("flag", "M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z")
+
 /** A square -- silencing a ringing alarm, which stops rather than pauses. */
 val StopIcon = iconVector("stop", "M6 6h12v12H6z")
 
