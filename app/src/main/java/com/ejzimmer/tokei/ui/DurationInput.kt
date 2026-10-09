@@ -60,13 +60,18 @@ fun EditableDurationFields(
     onSubmit: () -> Unit,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
+    boxWidth: Dp = 72.dp,
+    fontSize: TextUnit = 32.sp,
 ) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        DigitShiftField(pad2(hours), DurationField.HOURS, onDigit, onBackspace, onSubmit, focusRequester = focusRequester)
-        ClockColon()
-        DigitShiftField(pad2(minutes), DurationField.MINUTES, onDigit, onBackspace, onSubmit)
-        ClockColon()
-        DigitShiftField(pad2(seconds), DurationField.SECONDS, onDigit, onBackspace, onSubmit)
+        DigitShiftField(
+            pad2(hours), DurationField.HOURS, onDigit, onBackspace, onSubmit,
+            boxWidth = boxWidth, fontSize = fontSize, focusRequester = focusRequester,
+        )
+        ClockColon(fontSize = fontSize)
+        DigitShiftField(pad2(minutes), DurationField.MINUTES, onDigit, onBackspace, onSubmit, boxWidth = boxWidth, fontSize = fontSize)
+        ClockColon(fontSize = fontSize)
+        DigitShiftField(pad2(seconds), DurationField.SECONDS, onDigit, onBackspace, onSubmit, boxWidth = boxWidth, fontSize = fontSize)
     }
 }
 

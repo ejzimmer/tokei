@@ -1,12 +1,15 @@
 package com.ejzimmer.tokei.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,17 +38,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ejzimmer.tokei.audio.SOUNDS
 import com.ejzimmer.tokei.data.PomodoroPhase
 import com.ejzimmer.tokei.data.TimerData
 import com.ejzimmer.tokei.data.TimerStatus
+import com.ejzimmer.tokei.data.WorkSchedule
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -84,6 +92,10 @@ fun TimerCard(
             onAutoFocused()
         }
     }
+    if (workInfo != null) {
+        WorkCard(timer = timer, info = workInfo, nowMs = nowMs, onDigit = onDigit, onBackspace = onBackspace, onStartPause = onStartPause)
+        return
+    }
     val isRinging = timer.status == TimerStatus.RINGING
     val borderColor = when (timer.status) {
         TimerStatus.RUNNING -> Accent
@@ -100,22 +112,7 @@ fun TimerCard(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (workInfo == null) {
-            Header(name = timer.name, onRename = onRename, onDelete = onDelete)
-        } else {
-            // Fixed name, no delete: this one is part of the app rather than
-            // a timer you made. The day it's counting for rides on the same
-            // line, pushed to the far end, rather than taking a line of its
-            // own underneath.
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(timer.name, color = Face, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text(workInfo.dayLabel, color = Accent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            }
-        }
+        Header(name = timer.name, onRename = onRename, onDelete = onDelete)
 
         if (timer.isPomodoro) {
             PomodoroDualDisplay(
@@ -141,10 +138,6 @@ fun TimerCard(
             ReadOnlyDuration(h, m, s, accent = timer.status == TimerStatus.RUNNING)
         }
 
-        workInfo?.details?.forEach { detail ->
-            Text(detail, color = FaceDim, fontSize = 12.sp, textAlign = TextAlign.Center)
-        }
-
         timer.lastFinishedAtEpochMs?.let {
             Text(
                 "Last finished ${formatClockTime(it)}",
@@ -153,7 +146,7 @@ fun TimerCard(
             )
         }
 
-        if (workInfo == null && runCount > 0) {
+        if (runCount > 0) {
             Text(
                 if (runCount == 1) "Run once today" else "Run $runCount times today",
                 color = FaceDim,
@@ -179,7 +172,7 @@ fun TimerCard(
             ) {
                 Icon(
                     ResetIcon,
-                    contentDescription = if (workInfo == null) "Reset" else "Reset to 7:30",
+                    contentDescription = "Reset",
                     modifier = Modifier.size(20.dp),
                 )
             }
@@ -189,7 +182,7 @@ fun TimerCard(
             ) {
                 Icon(
                     if (timer.status == TimerStatus.RUNNING) PauseIcon else StartIcon,
-                    contentDescription = startPauseLabel(timer.status, isWork = workInfo != null),
+                    contentDescription = startPauseLabel(timer.status, isWork = false),
                     modifier = Modifier.size(20.dp),
                 )
             }
@@ -207,14 +200,139 @@ fun TimerCard(
         }
 
         // Below the buttons: picking a tone is setup, not something you reach
-        // for mid-countdown. The work timer never rings and waits to be
-        // silenced -- it rolls straight into the next cycle -- so there's no
-        // alarm sound to pick.
-        if (workInfo == null) {
-            SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
+        // for mid-countdown.
+        SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
+    }
+}
+
+/**
+ * The work timer as one dial: the outer ring fills as the day being counted
+ * down is worked off, the inner ring fills with today's 7.5 hours and laps
+ * in [Done] past them, and the start/stop button sits in the middle. Beside
+ * it, the counter, then two icon-led times: when it was last started or
+ * stopped, and the flag -- when the outer ring fills with no more breaks, or
+ * when it did fill, once the timer has moved on to a later day.
+ *
+ * No reset and no name: the time is corrected by typing over the counter
+ * while it's stopped, and the dial is what marks this card as the work timer.
+ */
+@Composable
+private fun WorkCard(
+    timer: TimerData,
+    info: WorkCardInfo,
+    nowMs: Long,
+    onDigit: (PomodoroPhase, DurationField, Int) -> Unit,
+    onBackspace: (PomodoroPhase, DurationField) -> Unit,
+    onStartPause: () -> Unit,
+) {
+    val isIdle = timer.status == TimerStatus.IDLE
+    val ringRemainingMs = if (isIdle) timer.durationMs() else remainingMs(timer, nowMs)
+    val ringFraction = 1f - ringRemainingMs.toFloat() / WorkSchedule.CYCLE_MS
+    val todayFraction = info.workedTodayMs.toFloat() / WorkSchedule.CYCLE_MS
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Surface, RoundedCornerShape(20.dp))
+            .border(1.dp, if (info.isRunning) Accent else Color.Transparent, RoundedCornerShape(20.dp))
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.size(128.dp), contentAlignment = Alignment.Center) {
+            WorkDial(ringFraction = ringFraction, todayFraction = todayFraction, modifier = Modifier.fillMaxSize())
+            Button(
+                onClick = onStartPause,
+                modifier = Modifier.size(64.dp),
+                shape = CircleShape,
+                contentPadding = PaddingValues(0.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Background),
+            ) {
+                Icon(
+                    if (info.isRunning) PauseIcon else StartIcon,
+                    contentDescription = startPauseLabel(timer.status, isWork = true),
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                info.dayLabel.uppercase(),
+                color = Accent,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            )
+            if (isIdle) {
+                EditableDurationFields(
+                    timer.hours, timer.minutes, timer.seconds,
+                    onDigit = { field, digit -> onDigit(PomodoroPhase.WORK, field, digit) },
+                    onBackspace = { field -> onBackspace(PomodoroPhase.WORK, field) },
+                    onSubmit = onStartPause,
+                    boxWidth = 42.dp,
+                    fontSize = 26.sp,
+                )
+            } else {
+                val (h, m, s) = remainingParts(timer, nowMs)
+                Text("$h:${pad2(m)}:${pad2(s)}", color = Face, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+            }
+            info.lastToggleLabel?.let {
+                WorkTime(
+                    icon = if (info.isRunning) StartIcon else PauseIcon,
+                    description = if (info.isRunning) "Started at" else "Stopped at",
+                    text = it,
+                    color = Face,
+                )
+            }
+            WorkTime(
+                icon = FlagIcon,
+                description = if (info.flagIsFilled) "Ring filled at" else "Ring fills at",
+                text = info.flagLabel,
+                color = if (info.flagIsFilled) Done else Face,
+            )
         }
     }
 }
+
+/** Two concentric rings, both starting from 12 o'clock. Past a full inner
+ * ring, the overtime lap draws over it in [Done]. */
+@Composable
+private fun WorkDial(ringFraction: Float, todayFraction: Float, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val outerWidth = 10.dp.toPx()
+        val innerWidth = 5.dp.toPx()
+        val gap = 9.dp.toPx()
+
+        fun ring(inset: Float, width: Float, fraction: Float, color: Color, track: Boolean) {
+            val topLeft = Offset(inset + width / 2, inset + width / 2)
+            val size = Size(this.size.width - 2 * topLeft.x, this.size.height - 2 * topLeft.y)
+            if (track) drawArc(Track, 0f, 360f, false, topLeft, size, style = Stroke(width))
+            val sweep = 360f * fraction.coerceIn(0f, 1f)
+            if (sweep > 0f) {
+                drawArc(color, -90f, sweep, false, topLeft, size, style = Stroke(width, cap = StrokeCap.Round))
+            }
+        }
+
+        ring(0f, outerWidth, ringFraction, Accent, track = true)
+        val innerInset = outerWidth + gap
+        ring(innerInset, innerWidth, todayFraction, Face.copy(alpha = 0.8f), track = true)
+        if (todayFraction > 1f) ring(innerInset, innerWidth, todayFraction - 1f, Done, track = false)
+    }
+}
+
+@Composable
+private fun WorkTime(icon: ImageVector, description: String, text: String, color: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(icon, contentDescription = description, tint = if (color == Face) FaceDim else color, modifier = Modifier.size(16.dp))
+        Text(text, color = color, fontSize = 15.sp)
+    }
+}
+
+private val Track = Color(0xFF34345C)
 
 /**
  * The work/rest timers side by side, mm:ss only. Whichever is indicated
@@ -443,13 +561,14 @@ private fun startPauseLabel(status: TimerStatus, isWork: Boolean): String = when
     TimerStatus.RUNNING -> if (isWork) "Stop" else "Pause"
 }
 
+private fun remainingMs(timer: TimerData, nowMs: Long): Long = when (timer.status) {
+    TimerStatus.RUNNING -> (timer.endAtEpochMs ?: nowMs) - nowMs
+    TimerStatus.PAUSED -> timer.pausedRemainingMs ?: 0L
+    else -> 0L
+}.coerceAtLeast(0L)
+
 private fun remainingParts(timer: TimerData, nowMs: Long): Triple<Int, Int, Int> {
-    val remainingMs = when (timer.status) {
-        TimerStatus.RUNNING -> (timer.endAtEpochMs ?: nowMs) - nowMs
-        TimerStatus.PAUSED -> timer.pausedRemainingMs ?: 0L
-        else -> 0L
-    }.coerceAtLeast(0L)
-    val totalSeconds = remainingMs / 1000
+    val totalSeconds = remainingMs(timer, nowMs) / 1000
     val hours = (totalSeconds / 3600).toInt()
     val minutes = ((totalSeconds % 3600) / 60).toInt()
     val seconds = (totalSeconds % 60).toInt()
