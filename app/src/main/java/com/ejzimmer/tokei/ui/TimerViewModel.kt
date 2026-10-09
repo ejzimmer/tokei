@@ -13,6 +13,7 @@ import com.ejzimmer.tokei.audio.soundById
 import com.ejzimmer.tokei.data.PomodoroPhase
 import com.ejzimmer.tokei.data.RunCounts
 import com.ejzimmer.tokei.data.TimerData
+import com.ejzimmer.tokei.data.TimerKind
 import com.ejzimmer.tokei.data.TimerRepository
 import com.ejzimmer.tokei.data.TimerStatus
 import com.ejzimmer.tokei.data.WORK_TIMER_ID
@@ -27,6 +28,7 @@ import com.ejzimmer.tokei.data.reconciled
 import com.ejzimmer.tokei.data.runStarted
 import com.ejzimmer.tokei.data.runStopped
 import com.ejzimmer.tokei.data.setRemainingMs
+import com.ejzimmer.tokei.data.stopwatchElapsedAt
 import com.ejzimmer.tokei.data.withHeadRemainingEdited
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -124,14 +126,15 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Returns the new timer's id, so the UI can bring it into view. */
-    fun addTimer(isPomodoro: Boolean = false): String {
+    fun addTimer(kind: TimerKind = TimerKind.COUNTDOWN): String {
         val list = _timers.value.toMutableList()
-        val name = if (isPomodoro) {
-            "Pomodoro ${list.count { it.isPomodoro } + 1}"
-        } else {
-            "Timer ${list.count { !it.isWorkTimer && !it.isPomodoro } + 1}"
+        val name = when (kind) {
+            TimerKind.POMODORO -> "Pomodoro ${list.count { it.isPomodoro } + 1}"
+            TimerKind.STOPWATCH -> "Stopwatch ${list.count { it.isStopwatch } + 1}"
+            TimerKind.COUNTDOWN ->
+                "Timer ${list.count { !it.isWorkTimer && !it.isPomodoro && !it.isStopwatch } + 1}"
         }
-        val timer = repository.createTimer(name, isPomodoro)
+        val timer = repository.createTimer(name, kind)
         list.add(timer)
         _timers.value = list
         persist()
@@ -199,6 +202,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     fun start(timerId: String) {
         if (timerId == WORK_TIMER_ID) return startWork()
         val timer = _timers.value.find { it.id == timerId } ?: return
+        if (timer.isStopwatch) return startStopwatch(timer)
         val durationMs = timer.pausedRemainingMs ?: timer.durationMs()
         if (durationMs <= 0) return
         val context = getApplication<Application>()
@@ -225,6 +229,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     fun pause(timerId: String) {
         if (timerId == WORK_TIMER_ID) return pauseWork()
         val timer = _timers.value.find { it.id == timerId } ?: return
+        if (timer.isStopwatch) return pauseStopwatch(timer)
         val endAt = timer.endAtEpochMs ?: return
         val context = getApplication<Application>()
         AlarmScheduler.cancel(context, timerId)
@@ -257,6 +262,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 it.phase = PomodoroPhase.WORK
                 it.otherPhaseRemainingMs = null
             }
+            it.stopwatchStartAtEpochMs = null
+            it.stopwatchElapsedMs = 0L
         }
     }
 
@@ -361,6 +368,32 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         val now = System.currentTimeMillis()
         mutate(timerId) { it.markFinished(now) }
         AlarmService.start(context, timerId, timer.name, timer.soundId)
+    }
+
+    // -- Stopwatch ----------------------------------------------------------
+
+    /** Counts up from wherever it was paused (zero after a reset). There's no
+     * alarm to schedule; the notification's chronometer does the ticking. */
+    private fun startStopwatch(timer: TimerData) {
+        if (timer.status == TimerStatus.RUNNING) return
+        val startAt = System.currentTimeMillis() - timer.stopwatchElapsedMs
+        if (timer.status == TimerStatus.IDLE) RunCounts.recordRun(timer.id)
+        mutate(timer.id) {
+            it.stopwatchStartAtEpochMs = startAt
+            it.status = TimerStatus.RUNNING
+        }
+        CountdownNotifier.showStopwatch(getApplication<Application>(), timer.id, timer.name, startAt)
+    }
+
+    private fun pauseStopwatch(timer: TimerData) {
+        if (timer.status != TimerStatus.RUNNING) return
+        val elapsed = timer.stopwatchElapsedAt(System.currentTimeMillis())
+        CountdownNotifier.cancel(getApplication<Application>(), timer.id)
+        mutate(timer.id) {
+            it.stopwatchElapsedMs = elapsed
+            it.stopwatchStartAtEpochMs = null
+            it.status = TimerStatus.PAUSED
+        }
     }
 
     // -- Work timer ---------------------------------------------------------

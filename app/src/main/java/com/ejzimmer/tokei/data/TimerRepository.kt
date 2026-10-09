@@ -81,12 +81,12 @@ class TimerRepository(context: Context) {
         prefs.edit().putString(KEY_WORK_STATE, state.toJson().toString()).apply()
     }
 
-    fun createTimer(name: String, isPomodoro: Boolean = false): TimerData {
+    fun createTimer(name: String, kind: TimerKind = TimerKind.COUNTDOWN): TimerData {
         val sound = SOUNDS[nextSoundIndex % SOUNDS.size]
         nextSoundIndex++
-        return if (isPomodoro) {
+        return when (kind) {
             // Classic pomodoro defaults: 25 minutes work, 5 minutes rest.
-            TimerData(
+            TimerKind.POMODORO -> TimerData(
                 name = name,
                 soundId = sound.id,
                 hours = 0,
@@ -97,8 +97,9 @@ class TimerRepository(context: Context) {
                 restMinutes = 5,
                 restSeconds = 0,
             )
-        } else {
-            TimerData(name = name, soundId = sound.id)
+            // Never rings, but still carries a sound so every timer has one.
+            TimerKind.STOPWATCH -> TimerData(name = name, soundId = sound.id, isStopwatch = true)
+            TimerKind.COUNTDOWN -> TimerData(name = name, soundId = sound.id)
         }
     }
 }

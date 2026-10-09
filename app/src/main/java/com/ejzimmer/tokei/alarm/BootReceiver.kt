@@ -16,9 +16,14 @@ class BootReceiver : BroadcastReceiver() {
         val timers = repository.load()
         for (timer in timers) {
             val endAt = timer.endAtEpochMs
+            val stopwatchStartAt = timer.stopwatchStartAtEpochMs
             if (timer.status == TimerStatus.RUNNING && endAt != null) {
                 AlarmScheduler.schedule(context, timer.id, endAt)
                 CountdownNotifier.show(context, timer.id, timer.name, endAt)
+            } else if (timer.status == TimerStatus.RUNNING && timer.isStopwatch && stopwatchStartAt != null) {
+                // Nothing to reschedule -- a stopwatch has no alarm -- but its
+                // ongoing notification was cleared along with everything else.
+                CountdownNotifier.showStopwatch(context, timer.id, timer.name, stopwatchStartAt)
             }
         }
         repository.save(timers)

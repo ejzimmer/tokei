@@ -54,6 +54,7 @@ import com.ejzimmer.tokei.data.PomodoroPhase
 import com.ejzimmer.tokei.data.TimerData
 import com.ejzimmer.tokei.data.TimerStatus
 import com.ejzimmer.tokei.data.WorkSchedule
+import com.ejzimmer.tokei.data.stopwatchElapsedAt
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -114,7 +115,17 @@ fun TimerCard(
     ) {
         Header(name = timer.name, onRename = onRename, onDelete = onDelete)
 
-        if (timer.isPomodoro) {
+        if (timer.isStopwatch) {
+            // Counts up, so there's nothing to set: the same big read-only
+            // clock a running countdown shows, from zero.
+            val totalSeconds = timer.stopwatchElapsedAt(nowMs) / 1000
+            ReadOnlyDuration(
+                (totalSeconds / 3600).toInt(),
+                ((totalSeconds % 3600) / 60).toInt(),
+                (totalSeconds % 60).toInt(),
+                accent = timer.status == TimerStatus.RUNNING,
+            )
+        } else if (timer.isPomodoro) {
             PomodoroDualDisplay(
                 timer = timer,
                 nowMs = nowMs,
@@ -200,8 +211,11 @@ fun TimerCard(
         }
 
         // Below the buttons: picking a tone is setup, not something you reach
-        // for mid-countdown.
-        SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
+        // for mid-countdown. A stopwatch never ends, so it has no alarm
+        // sound to pick.
+        if (!timer.isStopwatch) {
+            SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
+        }
     }
 }
 

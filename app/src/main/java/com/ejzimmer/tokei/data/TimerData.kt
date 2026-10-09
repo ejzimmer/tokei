@@ -27,6 +27,11 @@ fun PomodoroPhase.next(): PomodoroPhase = when (this) {
  * A pomodoro timer reuses hours/minutes/seconds as its *work* duration and
  * adds a separate rest duration, alternating between the two via [phase]
  * every time it rings and is dismissed.
+ *
+ * A stopwatch ignores the duration fields and counts up instead: while
+ * running, [stopwatchStartAtEpochMs] is the moment it would have started had
+ * it never been paused, so elapsed time is just now minus that; while paused,
+ * [stopwatchElapsedMs] holds the banked total. It never rings.
  */
 data class TimerData(
     val id: String = UUID.randomUUID().toString(),
@@ -50,6 +55,9 @@ data class TimerData(
     // progress survives the switch. Null means "untouched": use its full
     // configured duration. Meaningless for a non-pomodoro timer.
     var otherPhaseRemainingMs: Long? = null,
+    var isStopwatch: Boolean = false,
+    var stopwatchStartAtEpochMs: Long? = null,
+    var stopwatchElapsedMs: Long = 0L,
 ) {
     fun durationMs(phase: PomodoroPhase = this.phase): Long {
         val useRest = isPomodoro && phase == PomodoroPhase.REST
@@ -115,6 +123,9 @@ data class TimerData(
         put("restSeconds", restSeconds)
         put("phase", phase.name)
         put("otherPhaseRemainingMs", otherPhaseRemainingMs ?: JSONObject.NULL)
+        put("isStopwatch", isStopwatch)
+        put("stopwatchStartAtEpochMs", stopwatchStartAtEpochMs ?: JSONObject.NULL)
+        put("stopwatchElapsedMs", stopwatchElapsedMs)
     }
 
     companion object {
@@ -138,6 +149,9 @@ data class TimerData(
             phase = runCatching { PomodoroPhase.valueOf(json.getString("phase")) }
                 .getOrDefault(PomodoroPhase.WORK),
             otherPhaseRemainingMs = json.optLongOrNull("otherPhaseRemainingMs"),
+            isStopwatch = json.optBoolean("isStopwatch", false),
+            stopwatchStartAtEpochMs = json.optLongOrNull("stopwatchStartAtEpochMs"),
+            stopwatchElapsedMs = json.optLong("stopwatchElapsedMs", 0L),
         )
     }
 }
@@ -157,6 +171,19 @@ fun parseTimerList(json: String): List<TimerData> {
 }
 
 val TimerData.isWorkTimer: Boolean get() = id == WORK_TIMER_ID
+
+/** The three kinds of timer you can add yourself (the work timer is built in). */
+enum class TimerKind { COUNTDOWN, POMODORO, STOPWATCH }
+
+/** How long a stopwatch has been counting, as of [nowMs]. */
+fun TimerData.stopwatchElapsedAt(nowMs: Long): Long {
+    val startAt = stopwatchStartAtEpochMs
+    return if (status == TimerStatus.RUNNING && startAt != null) {
+        (nowMs - startAt).coerceAtLeast(0L)
+    } else {
+        stopwatchElapsedMs
+    }
+}
 
 /**
  * The one "this timer just ran out" transition, shared by every path that can
