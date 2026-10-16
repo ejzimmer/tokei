@@ -34,12 +34,9 @@ data class ChimeSound(
 private object Note {
     const val G4 = 392.00
     const val C5 = 523.25
-    const val D5 = 587.33
     const val E5 = 659.25
     const val G5 = 783.99
     const val C6 = 1046.50
-    const val E6 = 1318.51
-    const val G6 = 1567.98
 }
 
 private fun sequence(
@@ -65,24 +62,21 @@ private fun repeatedRiff(
     sequence(freqs, spacingMs, durationMs, gain, waveform, offsetMs = r * riffPeriodMs)
 }
 
-private fun bellStrikes(fundamentals: List<Double>, spacingMs: Int): List<NoteEvent> =
+private fun bellStrikes(
+    fundamentals: List<Double>,
+    spacingMs: Int,
+    ringMs: Int,
+): List<NoteEvent> =
     fundamentals.flatMapIndexed { i, fundamental ->
         listOf(1.0, 2.4, 3.8).mapIndexed { j, mult ->
             NoteEvent(
                 atMs = i * spacingMs,
                 freq = fundamental * mult,
-                durationMs = 2000 - j * 350,
+                durationMs = ringMs - j * ringMs / 6,
                 gain = 0.5f / (j + 1),
             )
         }
     }
-
-private val chimeNotes = sequence(
-    listOf(Note.C5, Note.E5, Note.G5, Note.C6, Note.G5, Note.E5, Note.C5),
-    spacingMs = 1600, durationMs = 1400, gain = 0.5f,
-)
-
-private val bellNotes = bellStrikes(listOf(Note.E5, Note.C5, Note.G4, Note.C5), spacingMs = 3000)
 
 private val marimbaNotes = repeatedRiff(
     listOf(Note.C5, Note.E5, Note.G5, Note.C6, Note.G5, Note.E5, Note.C5, Note.G4),
@@ -90,26 +84,35 @@ private val marimbaNotes = repeatedRiff(
     riffPeriodMs = 3000, repeats = 4,
 )
 
-private val xylophoneNotes = repeatedRiff(
-    listOf(Note.G5, Note.C6, Note.E6, Note.G6, Note.E6, Note.C6),
-    spacingMs = 220, durationMs = 200, gain = 0.5f, waveform = Waveform.SINE,
-    riffPeriodMs = 1500, repeats = 8,
-)
-
 private val tripleBeepNotes = sequence(
     listOf(Note.C6, Note.C6, Note.C6),
     spacingMs = 450, durationMs = 280, gain = 0.6f,
 )
 
+// A quick rising arpeggio ending on a held top note -- a different contour
+// and rhythm from the triple beep, so the two are easy to tell apart.
+private val risingNotes = sequence(
+    listOf(Note.C5, Note.E5, Note.G5),
+    spacingMs = 140, durationMs = 220, gain = 0.5f, waveform = Waveform.TRIANGLE,
+) + NoteEvent(atMs = 420, freq = Note.C6, durationMs = 700, gain = 0.5f, waveform = Waveform.TRIANGLE)
+
+// Two short bell strikes, high then low, like a doorbell.
+private val dingDongNotes = bellStrikes(listOf(Note.E5, Note.C5), spacingMs = 650, ringMs = 1400)
+
+/** Short sounds play once and stop on their own; Marimba is the one looping
+ * alarm left, for when it needs to keep going until Stop is pressed. */
 val SOUNDS: List<ChimeSound> = listOf(
-    ChimeSound("chime", "Chime", chimeNotes, previewNotes = chimeNotes.take(2)),
-    ChimeSound("bell", "Bell", bellNotes, previewNotes = bellNotes.take(3)),
-    ChimeSound("marimba", "Marimba", marimbaNotes, previewNotes = marimbaNotes.take(8)),
-    ChimeSound("xylophone", "Xylophone", xylophoneNotes, previewNotes = xylophoneNotes.take(6)),
     ChimeSound("triple_beep", "Triple beep", tripleBeepNotes, previewNotes = tripleBeepNotes, loop = false),
+    ChimeSound("rising", "Rising", risingNotes, previewNotes = risingNotes, loop = false),
+    ChimeSound("ding_dong", "Ding dong", dingDongNotes, previewNotes = dingDongNotes, loop = false),
+    ChimeSound("marimba", "Marimba", marimbaNotes, previewNotes = marimbaNotes.take(8)),
 )
 
-fun soundById(id: String): ChimeSound = SOUNDS.find { it.id == id } ?: SOUNDS[0]
+/** What new timers get, and what any timer still pointing at a removed sound
+ * falls back to. */
+val DEFAULT_SOUND: ChimeSound = SOUNDS.first { it.id == "triple_beep" }
+
+fun soundById(id: String): ChimeSound = SOUNDS.find { it.id == id } ?: DEFAULT_SOUND
 
 private fun waveSample(waveform: Waveform, phase: Double): Double = when (waveform) {
     Waveform.SINE -> sin(phase)

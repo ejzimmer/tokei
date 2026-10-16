@@ -1,6 +1,7 @@
 package com.ejzimmer.tokei.data
 
 import android.content.Context
+import com.ejzimmer.tokei.audio.DEFAULT_SOUND
 import com.ejzimmer.tokei.audio.SOUNDS
 
 private const val PREFS_NAME = "tokei_timers"
@@ -9,7 +10,6 @@ private const val KEY_WORK_STATE = "work_state_json"
 
 class TimerRepository(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    private var nextSoundIndex = 0
 
     /** Persisted timers exactly as stored, with no "catch up anything that
      * finished while we weren't looking" pass. AlarmReceiver needs this: it
@@ -26,6 +26,11 @@ class TimerRepository(context: Context) {
                 .getOrElse { mutableListOf(createTimer("Timer 1")) }
         }
         if (timers.isEmpty()) timers.add(createTimer("Timer 1"))
+        // Timers saved with a sound that has since been removed move to the
+        // default; the change is persisted the next time anything saves.
+        for (timer in timers) {
+            if (SOUNDS.none { it.id == timer.soundId }) timer.soundId = DEFAULT_SOUND.id
+        }
         return ensureWorkTimer(timers)
     }
 
@@ -43,7 +48,7 @@ class TimerRepository(context: Context) {
         val timer = TimerData(
             id = WORK_TIMER_ID,
             name = WORK_TIMER_NAME,
-            soundId = SOUNDS.first().id,
+            soundId = DEFAULT_SOUND.id,
         )
         timer.setRemainingMs(WorkSchedule.CYCLE_MS)
         return timer
@@ -82,8 +87,7 @@ class TimerRepository(context: Context) {
     }
 
     fun createTimer(name: String, kind: TimerKind = TimerKind.COUNTDOWN): TimerData {
-        val sound = SOUNDS[nextSoundIndex % SOUNDS.size]
-        nextSoundIndex++
+        val sound = DEFAULT_SOUND
         return when (kind) {
             // Classic pomodoro defaults: 25 minutes work, 5 minutes rest.
             TimerKind.POMODORO -> TimerData(

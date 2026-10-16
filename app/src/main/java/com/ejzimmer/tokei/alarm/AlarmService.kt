@@ -19,6 +19,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.ejzimmer.tokei.MainActivity
 import com.ejzimmer.tokei.R
 import com.ejzimmer.tokei.audio.AlarmPlayer
+import com.ejzimmer.tokei.audio.DEFAULT_SOUND
 import com.ejzimmer.tokei.audio.phraseDurationMs
 import com.ejzimmer.tokei.audio.soundById
 
@@ -49,7 +50,7 @@ class AlarmService : Service() {
         if (timerId == null) return START_NOT_STICKY
 
         val name = intent.getStringExtra(EXTRA_TIMER_NAME) ?: "Timer"
-        val soundId = intent.getStringExtra(EXTRA_SOUND_ID) ?: "chime"
+        val soundId = intent.getStringExtra(EXTRA_SOUND_ID) ?: DEFAULT_SOUND.id
         startOne(timerId, name, soundId)
         return START_STICKY
     }
