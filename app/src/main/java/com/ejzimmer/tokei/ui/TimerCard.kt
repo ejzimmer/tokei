@@ -50,6 +50,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ejzimmer.tokei.audio.SOUNDS
+import com.ejzimmer.tokei.audio.soundById
 import com.ejzimmer.tokei.data.PomodoroPhase
 import com.ejzimmer.tokei.data.TimerData
 import com.ejzimmer.tokei.data.TimerStatus
@@ -539,7 +540,7 @@ private fun Header(name: String, onRename: (String) -> Unit, onDelete: () -> Uni
 @Composable
 private fun SoundRow(soundId: String, onSoundChange: (String) -> Unit, onPreview: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    val current = SOUNDS.find { it.id == soundId } ?: SOUNDS.first()
+    val current = soundById(soundId)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Column {
             TextButton(onClick = { expanded = true }) {
