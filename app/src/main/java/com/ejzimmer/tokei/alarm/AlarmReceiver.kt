@@ -6,6 +6,7 @@ import android.content.Intent
 import com.ejzimmer.tokei.data.TimerData
 import com.ejzimmer.tokei.data.TimerRepository
 import com.ejzimmer.tokei.data.TimerStatus
+import com.ejzimmer.tokei.data.alarmSoundId
 import com.ejzimmer.tokei.data.cycleCompleted
 import com.ejzimmer.tokei.data.isWorkTimer
 import com.ejzimmer.tokei.data.localDateOf
@@ -36,11 +37,12 @@ class AlarmReceiver : BroadcastReceiver() {
 
         val now = System.currentTimeMillis()
         val finishedAt = timer.endAtEpochMs ?: now
+        val soundId = timer.alarmSoundId()
         timer.markFinished(finishedAt)
         repository.save(timers)
 
         CountdownNotifier.cancel(context, timerId)
-        AlarmService.start(context, timerId, timer.name, timer.soundId)
+        AlarmService.start(context, timerId, timer.name, soundId)
         AlarmEvents.notifyFinished(timerId, finishedAt)
     }
 

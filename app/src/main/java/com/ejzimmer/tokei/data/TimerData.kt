@@ -9,6 +9,11 @@ enum class TimerStatus { IDLE, RUNNING, PAUSED, RINGING }
 /** A pomodoro's longest settable phase is 59:59 -- its card has no hours box. */
 private const val MAX_POMODORO_MINUTES = 59
 
+/** A pomodoro's rest alarm keeps going until it's stopped, so a break ending
+ * isn't missed the way a short self-silencing alarm can be. Also what
+ * pomodoros saved before the rest phase had its own sound pick up. */
+const val REST_DEFAULT_SOUND_ID = "marimba"
+
 /** Which half of a pomodoro cycle a timer is currently in. Irrelevant for a
  * plain (non-pomodoro) timer, which always behaves as if it were WORK. */
 enum class PomodoroPhase { WORK, REST }
@@ -27,6 +32,14 @@ fun PomodoroPhase.next(): PomodoroPhase = when (this) {
  * A pomodoro timer reuses hours/minutes/seconds as its *work* duration and
  * adds a separate rest duration, alternating between the two via [phase]
  * every time it rings and is dismissed.
+ *
+ * Typing over a pomodoro's durations is a one-off adjustment: [savedWorkMs]
+ * and [savedRestMs] hold the durations it was set up with, and each phase
+ * goes back to its saved length once it has rung (or the timer is reset).
+ * Null means nothing has been saved yet -- a pomodoro that has never been
+ * started -- so whatever it reads at its first Start becomes the saved pair.
+ * Each phase also has its own alarm: [soundId] for work, [restSoundId] for
+ * rest.
  *
  * A stopwatch ignores the duration fields and counts up instead: while
  * running, [stopwatchStartAtEpochMs] is the moment it would have started had
@@ -55,6 +68,9 @@ data class TimerData(
     // progress survives the switch. Null means "untouched": use its full
     // configured duration. Meaningless for a non-pomodoro timer.
     var otherPhaseRemainingMs: Long? = null,
+    var savedWorkMs: Long? = null,
+    var savedRestMs: Long? = null,
+    var restSoundId: String = REST_DEFAULT_SOUND_ID,
     var isStopwatch: Boolean = false,
     var stopwatchStartAtEpochMs: Long? = null,
     var stopwatchElapsedMs: Long = 0L,
@@ -123,6 +139,9 @@ data class TimerData(
         put("restSeconds", restSeconds)
         put("phase", phase.name)
         put("otherPhaseRemainingMs", otherPhaseRemainingMs ?: JSONObject.NULL)
+        put("savedWorkMs", savedWorkMs ?: JSONObject.NULL)
+        put("savedRestMs", savedRestMs ?: JSONObject.NULL)
+        put("restSoundId", restSoundId)
         put("isStopwatch", isStopwatch)
         put("stopwatchStartAtEpochMs", stopwatchStartAtEpochMs ?: JSONObject.NULL)
         put("stopwatchElapsedMs", stopwatchElapsedMs)
@@ -149,6 +168,9 @@ data class TimerData(
             phase = runCatching { PomodoroPhase.valueOf(json.getString("phase")) }
                 .getOrDefault(PomodoroPhase.WORK),
             otherPhaseRemainingMs = json.optLongOrNull("otherPhaseRemainingMs"),
+            savedWorkMs = json.optLongOrNull("savedWorkMs"),
+            savedRestMs = json.optLongOrNull("savedRestMs"),
+            restSoundId = json.optString("restSoundId", REST_DEFAULT_SOUND_ID),
             isStopwatch = json.optBoolean("isStopwatch", false),
             stopwatchStartAtEpochMs = json.optLongOrNull("stopwatchStartAtEpochMs"),
             stopwatchElapsedMs = json.optLong("stopwatchElapsedMs", 0L),
@@ -156,6 +178,8 @@ data class TimerData(
     }
 }
 
+// isNull() is also true for a missing key, so fields added later read as null
+// on timers saved before they existed.
 private fun JSONObject.optLongOrNull(key: String): Long? =
     if (isNull(key)) null else optLong(key)
 
@@ -203,10 +227,49 @@ fun TimerData.markFinished(finishedAtEpochMs: Long) {
     lastFinishedAtEpochMs = finishedAtEpochMs
     endAtEpochMs = null
     if (isPomodoro) {
+        // A one-off adjustment only lasts the one run: the phase that just
+        // rang goes back to the length it was set up with.
+        savedMsFor(phase)?.let { setPhaseDurationMs(phase, it) }
         phase = phase.next()
         // The phase that just rang counted all the way down, so it starts
         // over at its full duration next time round.
         otherPhaseRemainingMs = null
+    }
+}
+
+/** The alarm for the phase that's counting down right now -- i.e. the one
+ * that rings next. Call it before [markFinished], which moves past it. */
+fun TimerData.alarmSoundId(): String =
+    if (isPomodoro && phase == PomodoroPhase.REST) restSoundId else soundId
+
+fun TimerData.savedMsFor(phase: PomodoroPhase): Long? = when (phase) {
+    PomodoroPhase.WORK -> savedWorkMs
+    PomodoroPhase.REST -> savedRestMs
+}
+
+/** Remembers the current durations as the ones to go back to, if nothing has
+ * been remembered yet. */
+fun TimerData.saveDurationsIfUnset() {
+    if (!isPomodoro) return
+    if (savedWorkMs == null) savedWorkMs = durationMs(PomodoroPhase.WORK)
+    if (savedRestMs == null) savedRestMs = durationMs(PomodoroPhase.REST)
+}
+
+/** Puts both phases back to their saved lengths, as Reset does. */
+fun TimerData.restoreSavedDurations() {
+    PomodoroPhase.entries.forEach { phase ->
+        savedMsFor(phase)?.let { setPhaseDurationMs(phase, it) }
+    }
+}
+
+/** Writes [ms] into a pomodoro phase's mm:ss fields. */
+fun TimerData.setPhaseDurationMs(phase: PomodoroPhase, ms: Long) {
+    val totalSeconds = ms.coerceAtLeast(0L) / 1000L
+    val m = (totalSeconds / 60L).toInt().coerceAtMost(MAX_POMODORO_MINUTES)
+    val s = (totalSeconds % 60L).toInt()
+    when (phase) {
+        PomodoroPhase.WORK -> { minutes = m; seconds = s }
+        PomodoroPhase.REST -> { restMinutes = m; restSeconds = s }
     }
 }
 

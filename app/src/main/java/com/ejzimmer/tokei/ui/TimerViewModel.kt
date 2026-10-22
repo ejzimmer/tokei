@@ -19,14 +19,17 @@ import com.ejzimmer.tokei.data.TimerStatus
 import com.ejzimmer.tokei.data.WORK_TIMER_ID
 import com.ejzimmer.tokei.data.WorkSchedule
 import com.ejzimmer.tokei.data.WorkState
+import com.ejzimmer.tokei.data.alarmSoundId
 import com.ejzimmer.tokei.data.claimedForStart
 import com.ejzimmer.tokei.data.cycleCompleted
 import com.ejzimmer.tokei.data.isWorkTimer
 import com.ejzimmer.tokei.data.localDateOf
 import com.ejzimmer.tokei.data.markFinished
 import com.ejzimmer.tokei.data.reconciled
+import com.ejzimmer.tokei.data.restoreSavedDurations
 import com.ejzimmer.tokei.data.runStarted
 import com.ejzimmer.tokei.data.runStopped
+import com.ejzimmer.tokei.data.saveDurationsIfUnset
 import com.ejzimmer.tokei.data.setRemainingMs
 import com.ejzimmer.tokei.data.stopwatchElapsedAt
 import com.ejzimmer.tokei.data.withHeadRemainingEdited
@@ -163,6 +166,18 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSound(timerId: String, soundId: String) = mutate(timerId) { it.soundId = soundId }
 
+    fun setRestSound(timerId: String, soundId: String) = mutate(timerId) { it.restSoundId = soundId }
+
+    /** Makes a pomodoro phase's adjusted length the one it goes back to,
+     * rather than a one-off. */
+    fun keepDuration(timerId: String, phase: PomodoroPhase) = mutate(timerId) { timer ->
+        if (!timer.isPomodoro || timer.status != TimerStatus.IDLE) return@mutate
+        when (phase) {
+            PomodoroPhase.WORK -> timer.savedWorkMs = timer.durationMs(phase)
+            PomodoroPhase.REST -> timer.savedRestMs = timer.durationMs(phase)
+        }
+    }
+
     fun previewSound(soundId: String) {
         previewPlayer.playOnce(soundById(soundId).previewNotes)
     }
@@ -220,6 +235,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             it.lastFinishedAtEpochMs = null
             it.finishedAtEpochMs = null
             it.status = TimerStatus.RUNNING
+            // A brand-new pomodoro's first Start is what fixes the lengths
+            // it was set up with; edits after that are one-offs.
+            it.saveDurationsIfUnset()
         }
         if (isFreshStart) RunCounts.recordRun(timerId)
         AlarmScheduler.schedule(context, timerId, endAt)
@@ -261,6 +279,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             if (it.isPomodoro) {
                 it.phase = PomodoroPhase.WORK
                 it.otherPhaseRemainingMs = null
+                it.restoreSavedDurations()
             }
             it.stopwatchStartAtEpochMs = null
             it.stopwatchElapsedMs = 0L
@@ -367,7 +386,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         CountdownNotifier.cancel(context, timerId)
         val now = System.currentTimeMillis()
         mutate(timerId) { it.markFinished(now) }
-        AlarmService.start(context, timerId, timer.name, timer.soundId)
+        AlarmService.start(context, timerId, timer.name, timer.alarmSoundId())
     }
 
     // -- Stopwatch ----------------------------------------------------------
