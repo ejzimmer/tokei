@@ -80,7 +80,6 @@ fun TimerCard(
     onSelectPhase: (PomodoroPhase) -> Unit = {},
     onRestSoundChange: (String) -> Unit = {},
     onPreviewRestSound: () -> Unit = {},
-    onKeepDuration: (PomodoroPhase) -> Unit = {},
     workInfo: WorkCardInfo? = null,
     autoFocus: Boolean = false,
     onAutoFocused: () -> Unit = {},
@@ -137,7 +136,6 @@ fun TimerCard(
                 onDigit = onDigit,
                 onBackspace = onBackspace,
                 onSubmit = onStartPause,
-                onKeepDuration = onKeepDuration,
                 firstFieldFocus = firstFieldFocus,
             )
         } else if (timer.status == TimerStatus.IDLE) {
@@ -374,7 +372,6 @@ private fun PomodoroDualDisplay(
     onDigit: (PomodoroPhase, DurationField, Int) -> Unit,
     onBackspace: (PomodoroPhase, DurationField) -> Unit,
     onSubmit: () -> Unit,
-    onKeepDuration: (PomodoroPhase) -> Unit,
     firstFieldFocus: FocusRequester,
 ) {
     val editable = timer.status == TimerStatus.IDLE
@@ -398,10 +395,8 @@ private fun PomodoroDualDisplay(
             isRunning = timer.phase == PomodoroPhase.WORK && timer.status == TimerStatus.RUNNING,
             minutes = workMinutes,
             seconds = workSeconds,
-            savedMs = timer.savedWorkMs.takeIf { editable && it != timer.durationMs(PomodoroPhase.WORK) },
             editable = editable,
             onSelect = { onSelectPhase(PomodoroPhase.WORK) },
-            onKeep = { onKeepDuration(PomodoroPhase.WORK) },
             onDigit = { field, digit -> onDigit(PomodoroPhase.WORK, field, digit) },
             onBackspace = { field -> onBackspace(PomodoroPhase.WORK, field) },
             onSubmit = onSubmit,
@@ -413,10 +408,8 @@ private fun PomodoroDualDisplay(
             isRunning = timer.phase == PomodoroPhase.REST && timer.status == TimerStatus.RUNNING,
             minutes = restMinutes,
             seconds = restSeconds,
-            savedMs = timer.savedRestMs.takeIf { editable && it != timer.durationMs(PomodoroPhase.REST) },
             editable = editable,
             onSelect = { onSelectPhase(PomodoroPhase.REST) },
-            onKeep = { onKeepDuration(PomodoroPhase.REST) },
             onDigit = { field, digit -> onDigit(PomodoroPhase.REST, field, digit) },
             onBackspace = { field -> onBackspace(PomodoroPhase.REST, field) },
             onSubmit = onSubmit,
@@ -431,10 +424,8 @@ private fun PomodoroPhaseColumn(
     isRunning: Boolean,
     minutes: Int,
     seconds: Int,
-    savedMs: Long?,
     editable: Boolean,
     onSelect: () -> Unit,
-    onKeep: () -> Unit,
     onDigit: (DurationField, Int) -> Unit,
     onBackspace: (DurationField) -> Unit,
     onSubmit: () -> Unit,
@@ -459,15 +450,6 @@ private fun PomodoroPhaseColumn(
             EditableDurationFieldsMmSs(minutes, seconds, onDigit, onBackspace, onSubmit, focusRequester = focusRequester)
         } else {
             ReadOnlyDurationMmSs(minutes, seconds, accent = isRunning)
-        }
-        // An adjusted phase says what it goes back to after it rings, with
-        // the option to make the adjustment stick instead.
-        if (savedMs != null) {
-            val savedSeconds = savedMs / 1000
-            Text("Resets to ${savedSeconds / 60}:${pad2((savedSeconds % 60).toInt())}", color = FaceDim, fontSize = 11.sp)
-            TextButton(onClick = onKeep, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                Text("Keep ${minutes}:${pad2(seconds)}", color = Accent, fontSize = 12.sp)
-            }
         }
     }
 }

@@ -168,16 +168,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setRestSound(timerId: String, soundId: String) = mutate(timerId) { it.restSoundId = soundId }
 
-    /** Makes a pomodoro phase's adjusted length the one it goes back to,
-     * rather than a one-off. */
-    fun keepDuration(timerId: String, phase: PomodoroPhase) = mutate(timerId) { timer ->
-        if (!timer.isPomodoro || timer.status != TimerStatus.IDLE) return@mutate
-        when (phase) {
-            PomodoroPhase.WORK -> timer.savedWorkMs = timer.durationMs(phase)
-            PomodoroPhase.REST -> timer.savedRestMs = timer.durationMs(phase)
-        }
-    }
-
     fun previewSound(soundId: String) {
         previewPlayer.playOnce(soundById(soundId).previewNotes)
     }
