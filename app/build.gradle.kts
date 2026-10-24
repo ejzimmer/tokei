@@ -16,6 +16,18 @@ android {
         versionName = "1.0"
     }
 
+    // CI runners start fresh, so without this every build would be signed with a
+    // newly generated debug key and Android would refuse to install it over the
+    // previous one. Committing a fixed debug key keeps updates installable in place.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
