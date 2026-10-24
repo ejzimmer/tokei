@@ -78,6 +78,8 @@ fun TimerCard(
     onSkipBack: () -> Unit = {},
     onSkipForward: () -> Unit = {},
     onSelectPhase: (PomodoroPhase) -> Unit = {},
+    onRestSoundChange: (String) -> Unit = {},
+    onPreviewRestSound: () -> Unit = {},
     workInfo: WorkCardInfo? = null,
     autoFocus: Boolean = false,
     onAutoFocused: () -> Unit = {},
@@ -214,7 +216,14 @@ fun TimerCard(
         // Below the buttons: picking a tone is setup, not something you reach
         // for mid-countdown. A stopwatch never ends, so it has no alarm
         // sound to pick.
-        if (!timer.isStopwatch) {
+        if (timer.isPomodoro) {
+            // One alarm per phase: a short one suits the end of work, while
+            // the end of a break is easy to miss unless it keeps going.
+            Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+                SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound, label = "Work")
+                SoundRow(soundId = timer.restSoundId, onSoundChange = onRestSoundChange, onPreview = onPreviewRestSound, label = "Rest")
+            }
+        } else if (!timer.isStopwatch) {
             SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
         }
     }
@@ -538,10 +547,16 @@ private fun Header(name: String, onRename: (String) -> Unit, onDelete: () -> Uni
 }
 
 @Composable
-private fun SoundRow(soundId: String, onSoundChange: (String) -> Unit, onPreview: () -> Unit) {
+private fun SoundRow(
+    soundId: String,
+    onSoundChange: (String) -> Unit,
+    onPreview: () -> Unit,
+    label: String? = null,
+) {
     var expanded by remember { mutableStateOf(false) }
     val current = soundById(soundId)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        label?.let { Text(it, color = FaceDim, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
         Column {
             TextButton(onClick = { expanded = true }) {
                 Text(current.label, color = Face)

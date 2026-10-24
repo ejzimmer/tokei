@@ -30,6 +30,7 @@ class TimerRepository(context: Context) {
         // default; the change is persisted the next time anything saves.
         for (timer in timers) {
             if (SOUNDS.none { it.id == timer.soundId }) timer.soundId = DEFAULT_SOUND.id
+            if (SOUNDS.none { it.id == timer.restSoundId }) timer.restSoundId = REST_DEFAULT_SOUND_ID
         }
         return ensureWorkTimer(timers)
     }

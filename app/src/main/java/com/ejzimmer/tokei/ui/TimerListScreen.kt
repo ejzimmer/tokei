@@ -116,6 +116,8 @@ fun TimerListScreen(
                         onSkipBack = { viewModel.skipBack(timer.id) },
                         onSkipForward = { viewModel.skipForward(timer.id) },
                         onSelectPhase = { phase -> viewModel.selectPhase(timer.id, phase) },
+                        onRestSoundChange = { viewModel.setRestSound(timer.id, it) },
+                        onPreviewRestSound = { viewModel.previewSound(timer.restSoundId) },
                         autoFocus = timer.id == newTimerId,
                         onAutoFocused = { newTimerId = null },
                     )
