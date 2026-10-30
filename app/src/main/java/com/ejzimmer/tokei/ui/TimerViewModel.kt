@@ -20,7 +20,6 @@ import com.ejzimmer.tokei.data.TimerStatus
 import com.ejzimmer.tokei.data.WORK_TIMER_ID
 import com.ejzimmer.tokei.data.WorkSchedule
 import com.ejzimmer.tokei.data.WorkState
-import com.ejzimmer.tokei.data.alarmSoundId
 import com.ejzimmer.tokei.data.claimedForStart
 import com.ejzimmer.tokei.data.cycleCompleted
 import com.ejzimmer.tokei.data.isWorkTimer
@@ -338,56 +337,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * Nudges a running or paused pomodoro's live countdown by a fixed
-     * increment, without changing phase -- for correcting the clock after
-     * forgetting to unpause, rather than restarting the phase from scratch.
-     */
-    fun skipForward(timerId: String) = nudge(timerId, SKIP_INCREMENT_MS)
-
-    fun skipBack(timerId: String) = nudge(timerId, -SKIP_INCREMENT_MS)
-
-    private fun nudge(timerId: String, deltaMs: Long) {
-        val timer = _timers.value.find { it.id == timerId } ?: return
-        if (!timer.isPomodoro) return
-        val maxMs = timer.durationMs()
-        when (timer.status) {
-            TimerStatus.RUNNING -> {
-                val endAt = timer.endAtEpochMs ?: return
-                val now = System.currentTimeMillis()
-                val remaining = (endAt - now).coerceIn(0L, maxMs)
-                val newRemaining = (remaining - deltaMs).coerceIn(0L, maxMs)
-                if (newRemaining <= 0L) {
-                    finishNow(timerId)
-                    return
-                }
-                val newEndAt = now + newRemaining
-                val context = getApplication<Application>()
-                AlarmScheduler.schedule(context, timerId, newEndAt)
-                CountdownNotifier.show(context, timerId, timer.name, newEndAt)
-                mutate(timerId) { it.endAtEpochMs = newEndAt }
-            }
-            TimerStatus.PAUSED -> {
-                val remaining = timer.pausedRemainingMs ?: return
-                val newRemaining = (remaining - deltaMs).coerceIn(0L, maxMs)
-                mutate(timerId) { it.pausedRemainingMs = newRemaining }
-            }
-            else -> {}
-        }
-    }
-
-    /** What AlarmReceiver would do if its alarm fired right now -- used when a
-     * "skip ahead" nudge runs the remaining time down to zero early. */
-    private fun finishNow(timerId: String) {
-        val timer = _timers.value.find { it.id == timerId } ?: return
-        val context = getApplication<Application>()
-        AlarmScheduler.cancel(context, timerId)
-        CountdownNotifier.cancel(context, timerId)
-        val now = System.currentTimeMillis()
-        mutate(timerId) { it.markFinished(now) }
-        AlarmService.start(context, timerId, timer.name, timer.alarmSoundId())
-    }
-
     // -- Stopwatch ----------------------------------------------------------
 
     /** Counts up from wherever it was paused (zero after a reset). There's no
@@ -524,7 +473,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     private companion object {
         const val MAX_CATCH_UP_CYCLES = 32
-        const val SKIP_INCREMENT_MS = 10 * 60_000L
     }
 }
 

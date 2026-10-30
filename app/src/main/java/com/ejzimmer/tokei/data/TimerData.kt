@@ -211,8 +211,8 @@ fun TimerData.stopwatchElapsedAt(nowMs: Long): Long {
 
 /**
  * The one "this timer just ran out" transition, shared by every path that can
- * discover it: the alarm firing, a skip-ahead landing on zero, and the
- * catch-up pass for a boundary missed while the app was dead.
+ * discover it: the alarm firing (seen by AlarmReceiver and the live UI), and
+ * the catch-up pass for a boundary missed while the app was dead.
  *
  * A pomodoro hands over to its other phase right here, rather than waiting to
  * be dismissed. Dismissal used to own the handover, which meant it never

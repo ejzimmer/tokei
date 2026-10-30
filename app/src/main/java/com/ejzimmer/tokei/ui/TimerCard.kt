@@ -75,8 +75,6 @@ fun TimerCard(
     onStartPause: () -> Unit,
     onReset: () -> Unit,
     onStopAlarm: () -> Unit,
-    onSkipBack: () -> Unit = {},
-    onSkipForward: () -> Unit = {},
     onSelectPhase: (PomodoroPhase) -> Unit = {},
     onRestSoundChange: (String) -> Unit = {},
     onPreviewRestSound: () -> Unit = {},
@@ -166,17 +164,6 @@ fun TimerCard(
                 color = FaceDim,
                 fontSize = 12.sp,
             )
-        }
-
-        if (timer.isPomodoro && (timer.status == TimerStatus.RUNNING || timer.status == TimerStatus.PAUSED)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TextButton(onClick = onSkipBack) {
-                    Text("◀ 10 min", color = FaceDim)
-                }
-                TextButton(onClick = onSkipForward) {
-                    Text("10 min ▶", color = FaceDim)
-                }
-            }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
