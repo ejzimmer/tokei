@@ -10,6 +10,7 @@ import com.ejzimmer.tokei.alarm.CountdownNotifier
 import com.ejzimmer.tokei.alarm.WorkReminderScheduler
 import com.ejzimmer.tokei.audio.AlarmPlayer
 import com.ejzimmer.tokei.audio.soundById
+import com.ejzimmer.tokei.data.MAX_POMODORO_MINUTES
 import com.ejzimmer.tokei.data.PomodoroPhase
 import com.ejzimmer.tokei.data.RunCounts
 import com.ejzimmer.tokei.data.TimerData
@@ -19,7 +20,6 @@ import com.ejzimmer.tokei.data.TimerStatus
 import com.ejzimmer.tokei.data.WORK_TIMER_ID
 import com.ejzimmer.tokei.data.WorkSchedule
 import com.ejzimmer.tokei.data.WorkState
-import com.ejzimmer.tokei.data.alarmSoundId
 import com.ejzimmer.tokei.data.claimedForStart
 import com.ejzimmer.tokei.data.cycleCompleted
 import com.ejzimmer.tokei.data.isWorkTimer
@@ -174,6 +174,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun enterDigit(timerId: String, phase: PomodoroPhase, field: DurationField, digit: Int) {
         mutate(timerId) { timer ->
+            if (timer.isPomodoro && timer.status == TimerStatus.PAUSED) {
+                timer.editPausedRemaining(phase, field) { (it * 10 + digit) % 100 }
+                return@mutate
+            }
             if (timer.status != TimerStatus.IDLE) return@mutate
             val current = timer.fieldValue(phase, field)
             timer.setFieldValue(phase, field, (current * 10 + digit) % 100)
@@ -184,6 +188,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun backspaceDigit(timerId: String, phase: PomodoroPhase, field: DurationField) {
         mutate(timerId) { timer ->
+            if (timer.isPomodoro && timer.status == TimerStatus.PAUSED) {
+                timer.editPausedRemaining(phase, field) { it / 10 }
+                return@mutate
+            }
             if (timer.status != TimerStatus.IDLE) return@mutate
             timer.setFieldValue(phase, field, timer.fieldValue(phase, field) / 10)
             timer.normalize()
@@ -329,56 +337,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * Nudges a running or paused pomodoro's live countdown by a fixed
-     * increment, without changing phase -- for correcting the clock after
-     * forgetting to unpause, rather than restarting the phase from scratch.
-     */
-    fun skipForward(timerId: String) = nudge(timerId, SKIP_INCREMENT_MS)
-
-    fun skipBack(timerId: String) = nudge(timerId, -SKIP_INCREMENT_MS)
-
-    private fun nudge(timerId: String, deltaMs: Long) {
-        val timer = _timers.value.find { it.id == timerId } ?: return
-        if (!timer.isPomodoro) return
-        val maxMs = timer.durationMs()
-        when (timer.status) {
-            TimerStatus.RUNNING -> {
-                val endAt = timer.endAtEpochMs ?: return
-                val now = System.currentTimeMillis()
-                val remaining = (endAt - now).coerceIn(0L, maxMs)
-                val newRemaining = (remaining - deltaMs).coerceIn(0L, maxMs)
-                if (newRemaining <= 0L) {
-                    finishNow(timerId)
-                    return
-                }
-                val newEndAt = now + newRemaining
-                val context = getApplication<Application>()
-                AlarmScheduler.schedule(context, timerId, newEndAt)
-                CountdownNotifier.show(context, timerId, timer.name, newEndAt)
-                mutate(timerId) { it.endAtEpochMs = newEndAt }
-            }
-            TimerStatus.PAUSED -> {
-                val remaining = timer.pausedRemainingMs ?: return
-                val newRemaining = (remaining - deltaMs).coerceIn(0L, maxMs)
-                mutate(timerId) { it.pausedRemainingMs = newRemaining }
-            }
-            else -> {}
-        }
-    }
-
-    /** What AlarmReceiver would do if its alarm fired right now -- used when a
-     * "skip ahead" nudge runs the remaining time down to zero early. */
-    private fun finishNow(timerId: String) {
-        val timer = _timers.value.find { it.id == timerId } ?: return
-        val context = getApplication<Application>()
-        AlarmScheduler.cancel(context, timerId)
-        CountdownNotifier.cancel(context, timerId)
-        val now = System.currentTimeMillis()
-        mutate(timerId) { it.markFinished(now) }
-        AlarmService.start(context, timerId, timer.name, timer.alarmSoundId())
-    }
-
     // -- Stopwatch ----------------------------------------------------------
 
     /** Counts up from wherever it was paused (zero after a reset). There's no
@@ -515,8 +473,31 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     private companion object {
         const val MAX_CATCH_UP_CYCLES = 32
-        const val SKIP_INCREMENT_MS = 10 * 60_000L
     }
+}
+
+/**
+ * Typing over a paused pomodoro changes what's left of this run, not the
+ * lengths it was set up with -- so it's gone again once the phase rings or
+ * the timer is reset. The indicated side's remainder is [TimerData.pausedRemainingMs];
+ * the other side's is [TimerData.otherPhaseRemainingMs], which starts from
+ * its full length if it hasn't been touched yet.
+ */
+private fun TimerData.editPausedRemaining(phase: PomodoroPhase, field: DurationField, edit: (Int) -> Int) {
+    val isIndicated = phase == this.phase
+    val remainingMs = (if (isIndicated) pausedRemainingMs else otherPhaseRemainingMs) ?: durationMs(phase)
+    val totalSeconds = remainingMs.coerceAtLeast(0L) / 1000L
+    var m = (totalSeconds / 60L).toInt()
+    var s = (totalSeconds % 60L).toInt()
+    when (field) {
+        DurationField.MINUTES -> m = edit(m)
+        DurationField.SECONDS -> s = edit(s)
+        DurationField.HOURS -> return
+    }
+    m = (m + s / 60).coerceAtMost(MAX_POMODORO_MINUTES)
+    s %= 60
+    val newMs = (m * 60L + s) * 1000L
+    if (isIndicated) pausedRemainingMs = newMs else otherPhaseRemainingMs = newMs
 }
 
 /** For a plain timer [phase] is always WORK, so this reads/writes the same

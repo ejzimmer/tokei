@@ -7,7 +7,7 @@ import java.util.UUID
 enum class TimerStatus { IDLE, RUNNING, PAUSED, RINGING }
 
 /** A pomodoro's longest settable phase is 59:59 -- its card has no hours box. */
-private const val MAX_POMODORO_MINUTES = 59
+const val MAX_POMODORO_MINUTES = 59
 
 /** A pomodoro's rest alarm keeps going until it's stopped, so a break ending
  * isn't missed the way a short self-silencing alarm can be. Also what
@@ -211,8 +211,8 @@ fun TimerData.stopwatchElapsedAt(nowMs: Long): Long {
 
 /**
  * The one "this timer just ran out" transition, shared by every path that can
- * discover it: the alarm firing, a skip-ahead landing on zero, and the
- * catch-up pass for a boundary missed while the app was dead.
+ * discover it: the alarm firing (seen by AlarmReceiver and the live UI), and
+ * the catch-up pass for a boundary missed while the app was dead.
  *
  * A pomodoro hands over to its other phase right here, rather than waiting to
  * be dismissed. Dismissal used to own the handover, which meant it never
