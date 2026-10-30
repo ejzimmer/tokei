@@ -7,7 +7,7 @@ import java.util.UUID
 enum class TimerStatus { IDLE, RUNNING, PAUSED, RINGING }
 
 /** A pomodoro's longest settable phase is 59:59 -- its card has no hours box. */
-private const val MAX_POMODORO_MINUTES = 59
+const val MAX_POMODORO_MINUTES = 59
 
 /** A pomodoro's rest alarm keeps going until it's stopped, so a break ending
  * isn't missed the way a short self-silencing alarm can be. Also what

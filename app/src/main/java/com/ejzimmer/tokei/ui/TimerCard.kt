@@ -362,7 +362,7 @@ private val Track = Color(0xFF34345C)
  * The work/rest timers side by side, mm:ss only. Whichever is indicated
  * (running, or about to run on Play) carries the dot; tapping the other
  * makes IT the indicated side, stopping the first without discarding its
- * remaining time. Editable while IDLE, read-only countdowns otherwise.
+ * remaining time. Editable while IDLE or PAUSED, read-only countdowns while running.
  */
 @Composable
 private fun PomodoroDualDisplay(
@@ -374,13 +374,16 @@ private fun PomodoroDualDisplay(
     onSubmit: () -> Unit,
     firstFieldFocus: FocusRequester,
 ) {
-    val editable = timer.status == TimerStatus.IDLE
-    val (workMinutes, workSeconds) = if (editable) {
+    // Paused is editable too: typing then changes what's left of this run
+    // (see pomodoroRemainingParts), not the lengths it was set up with.
+    val isIdle = timer.status == TimerStatus.IDLE
+    val editable = isIdle || timer.status == TimerStatus.PAUSED
+    val (workMinutes, workSeconds) = if (isIdle) {
         timer.minutes to timer.seconds
     } else {
         pomodoroRemainingParts(timer, PomodoroPhase.WORK, nowMs)
     }
-    val (restMinutes, restSeconds) = if (editable) {
+    val (restMinutes, restSeconds) = if (isIdle) {
         timer.restMinutes to timer.restSeconds
     } else {
         pomodoroRemainingParts(timer, PomodoroPhase.REST, nowMs)

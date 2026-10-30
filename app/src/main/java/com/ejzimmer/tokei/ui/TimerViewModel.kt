@@ -10,6 +10,7 @@ import com.ejzimmer.tokei.alarm.CountdownNotifier
 import com.ejzimmer.tokei.alarm.WorkReminderScheduler
 import com.ejzimmer.tokei.audio.AlarmPlayer
 import com.ejzimmer.tokei.audio.soundById
+import com.ejzimmer.tokei.data.MAX_POMODORO_MINUTES
 import com.ejzimmer.tokei.data.PomodoroPhase
 import com.ejzimmer.tokei.data.RunCounts
 import com.ejzimmer.tokei.data.TimerData
@@ -174,6 +175,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun enterDigit(timerId: String, phase: PomodoroPhase, field: DurationField, digit: Int) {
         mutate(timerId) { timer ->
+            if (timer.isPomodoro && timer.status == TimerStatus.PAUSED) {
+                timer.editPausedRemaining(phase, field) { (it * 10 + digit) % 100 }
+                return@mutate
+            }
             if (timer.status != TimerStatus.IDLE) return@mutate
             val current = timer.fieldValue(phase, field)
             timer.setFieldValue(phase, field, (current * 10 + digit) % 100)
@@ -184,6 +189,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun backspaceDigit(timerId: String, phase: PomodoroPhase, field: DurationField) {
         mutate(timerId) { timer ->
+            if (timer.isPomodoro && timer.status == TimerStatus.PAUSED) {
+                timer.editPausedRemaining(phase, field) { it / 10 }
+                return@mutate
+            }
             if (timer.status != TimerStatus.IDLE) return@mutate
             timer.setFieldValue(phase, field, timer.fieldValue(phase, field) / 10)
             timer.normalize()
@@ -517,6 +526,30 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         const val MAX_CATCH_UP_CYCLES = 32
         const val SKIP_INCREMENT_MS = 10 * 60_000L
     }
+}
+
+/**
+ * Typing over a paused pomodoro changes what's left of this run, not the
+ * lengths it was set up with -- so it's gone again once the phase rings or
+ * the timer is reset. The indicated side's remainder is [TimerData.pausedRemainingMs];
+ * the other side's is [TimerData.otherPhaseRemainingMs], which starts from
+ * its full length if it hasn't been touched yet.
+ */
+private fun TimerData.editPausedRemaining(phase: PomodoroPhase, field: DurationField, edit: (Int) -> Int) {
+    val isIndicated = phase == this.phase
+    val remainingMs = (if (isIndicated) pausedRemainingMs else otherPhaseRemainingMs) ?: durationMs(phase)
+    val totalSeconds = remainingMs.coerceAtLeast(0L) / 1000L
+    var m = (totalSeconds / 60L).toInt()
+    var s = (totalSeconds % 60L).toInt()
+    when (field) {
+        DurationField.MINUTES -> m = edit(m)
+        DurationField.SECONDS -> s = edit(s)
+        DurationField.HOURS -> return
+    }
+    m = (m + s / 60).coerceAtMost(MAX_POMODORO_MINUTES)
+    s %= 60
+    val newMs = (m * 60L + s) * 1000L
+    if (isIndicated) pausedRemainingMs = newMs else otherPhaseRemainingMs = newMs
 }
 
 /** For a plain timer [phase] is always WORK, so this reads/writes the same
