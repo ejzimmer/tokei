@@ -179,9 +179,12 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 return@mutate
             }
             if (timer.status != TimerStatus.IDLE) return@mutate
+            // No normalize() here: the box is mid-edit, and carrying an
+            // in-between value would wreck the digits still to come -- 48
+            // shifts through 80 on its way to 08, and carrying the 80 bumped
+            // the hour. Overflow is carried when the timer starts instead.
             val current = timer.fieldValue(phase, field)
             timer.setFieldValue(phase, field, (current * 10 + digit) % 100)
-            timer.normalize()
         }
         syncWorkRemainingFromDigits(timerId)
     }
@@ -194,7 +197,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             }
             if (timer.status != TimerStatus.IDLE) return@mutate
             timer.setFieldValue(phase, field, timer.fieldValue(phase, field) / 10)
-            timer.normalize()
         }
         syncWorkRemainingFromDigits(timerId)
     }
@@ -214,8 +216,12 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun start(timerId: String) {
         if (timerId == WORK_TIMER_ID) return startWork()
+        val found = _timers.value.find { it.id == timerId } ?: return
+        if (found.isStopwatch) return startStopwatch(found)
+        // Typing leaves overflow (e.g. 90 in the minutes box) for here, so
+        // carry it before the duration is read.
+        mutate(timerId) { it.normalize() }
         val timer = _timers.value.find { it.id == timerId } ?: return
-        if (timer.isStopwatch) return startStopwatch(timer)
         val durationMs = timer.pausedRemainingMs ?: timer.durationMs()
         if (durationMs <= 0) return
         val context = getApplication<Application>()
@@ -489,13 +495,16 @@ private fun TimerData.editPausedRemaining(phase: PomodoroPhase, field: DurationF
     val totalSeconds = remainingMs.coerceAtLeast(0L) / 1000L
     var m = (totalSeconds / 60L).toInt()
     var s = (totalSeconds % 60L).toInt()
+    // A box can't hold an in-between value here the way an idle timer's
+    // fields can, since this is stored as one remainder -- so a keystroke
+    // that would push a box past 59 keeps just the digit typed: 48, then 0,
+    // reads 00 (not an extra minute of 20), and then 8 makes it 08.
+    fun shifted(value: Int): Int = edit(value).let { if (it > 59) it % 10 else it }
     when (field) {
-        DurationField.MINUTES -> m = edit(m)
-        DurationField.SECONDS -> s = edit(s)
+        DurationField.MINUTES -> m = shifted(m).coerceAtMost(MAX_POMODORO_MINUTES)
+        DurationField.SECONDS -> s = shifted(s)
         DurationField.HOURS -> return
     }
-    m = (m + s / 60).coerceAtMost(MAX_POMODORO_MINUTES)
-    s %= 60
     val newMs = (m * 60L + s) * 1000L
     if (isIndicated) pausedRemainingMs = newMs else otherPhaseRemainingMs = newMs
 }
