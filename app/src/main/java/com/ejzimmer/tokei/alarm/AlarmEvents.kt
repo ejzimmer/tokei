@@ -39,4 +39,13 @@ object AlarmEvents {
     fun notifyWorkChanged() {
         _workChanged.tryEmit(Unit)
     }
+
+    private val _timersChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    val timersChanged = _timersChanged.asSharedFlow()
+
+    /** Something outside the app rewrote saved timers -- a bread reminder
+     * ringing again, or the bread going in the fridge from the notification. */
+    fun notifyTimersChanged() {
+        _timersChanged.tryEmit(Unit)
+    }
 }

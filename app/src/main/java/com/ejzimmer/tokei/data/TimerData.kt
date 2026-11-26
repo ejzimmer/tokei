@@ -74,6 +74,7 @@ data class TimerData(
     var isStopwatch: Boolean = false,
     var stopwatchStartAtEpochMs: Long? = null,
     var stopwatchElapsedMs: Long = 0L,
+    var breadStepsFinished: Int = 0,
 ) {
     fun durationMs(phase: PomodoroPhase = this.phase): Long {
         val useRest = isPomodoro && phase == PomodoroPhase.REST
@@ -145,6 +146,7 @@ data class TimerData(
         put("isStopwatch", isStopwatch)
         put("stopwatchStartAtEpochMs", stopwatchStartAtEpochMs ?: JSONObject.NULL)
         put("stopwatchElapsedMs", stopwatchElapsedMs)
+        put("breadStepsFinished", breadStepsFinished)
     }
 
     companion object {
@@ -174,6 +176,7 @@ data class TimerData(
             isStopwatch = json.optBoolean("isStopwatch", false),
             stopwatchStartAtEpochMs = json.optLongOrNull("stopwatchStartAtEpochMs"),
             stopwatchElapsedMs = json.optLong("stopwatchElapsedMs", 0L),
+            breadStepsFinished = json.optInt("breadStepsFinished", 0),
         )
     }
 }
@@ -235,12 +238,16 @@ fun TimerData.markFinished(finishedAtEpochMs: Long) {
         // over at its full duration next time round.
         otherPhaseRemainingMs = null
     }
+    if (isBread) finishBreadStep()
 }
 
 /** The alarm for the phase that's counting down right now -- i.e. the one
  * that rings next. Call it before [markFinished], which moves past it. */
-fun TimerData.alarmSoundId(): String =
-    if (isPomodoro && phase == PomodoroPhase.REST) restSoundId else soundId
+fun TimerData.alarmSoundId(): String = when {
+    isBread -> BREAD_SOUND_ID
+    isPomodoro && phase == PomodoroPhase.REST -> restSoundId
+    else -> soundId
+}
 
 fun TimerData.savedMsFor(phase: PomodoroPhase): Long? = when (phase) {
     PomodoroPhase.WORK -> savedWorkMs

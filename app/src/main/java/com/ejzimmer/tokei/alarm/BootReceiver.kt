@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import com.ejzimmer.tokei.data.TimerRepository
 import com.ejzimmer.tokei.data.TimerStatus
+import com.ejzimmer.tokei.data.isBreadWaitingForNextStep
 
 /** AlarmManager alarms don't survive a reboot, so anything still running
  * needs to be rescheduled once the device is back up. */
@@ -24,6 +25,8 @@ class BootReceiver : BroadcastReceiver() {
                 // Nothing to reschedule -- a stopwatch has no alarm -- but its
                 // ongoing notification was cleared along with everything else.
                 CountdownNotifier.showStopwatch(context, timer.id, timer.name, stopwatchStartAt)
+            } else if (timer.isBreadWaitingForNextStep) {
+                BreadReminderScheduler.scheduleNextReminder(context, timer.id)
             }
         }
         repository.save(timers)

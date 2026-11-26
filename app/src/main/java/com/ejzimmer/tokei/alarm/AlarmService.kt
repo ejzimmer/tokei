@@ -31,7 +31,7 @@ import com.ejzimmer.tokei.audio.soundById
  * is promoted to take its place.
  */
 class AlarmService : Service() {
-    private data class Ringing(val name: String, val player: AlarmPlayer, val loop: Boolean)
+    private data class Ringing(val text: AlarmText, val player: AlarmPlayer, val loop: Boolean)
 
     private val ringing = mutableMapOf<String, Ringing>()
     private var vibrator: Vibrator? = null
@@ -49,9 +49,13 @@ class AlarmService : Service() {
         }
         if (timerId == null) return START_NOT_STICKY
 
-        val name = intent.getStringExtra(EXTRA_TIMER_NAME) ?: "Timer"
+        val text = AlarmText(
+            title = intent.getStringExtra(EXTRA_ALARM_TITLE) ?: getString(R.string.notification_title_format, "Timer"),
+            body = intent.getStringExtra(EXTRA_ALARM_BODY) ?: getString(R.string.notification_body),
+            stopLabel = intent.getStringExtra(EXTRA_ALARM_STOP_LABEL) ?: getString(R.string.notification_stop_action),
+        )
         val soundId = intent.getStringExtra(EXTRA_SOUND_ID) ?: DEFAULT_SOUND.id
-        startOne(timerId, name, soundId)
+        startOne(timerId, text, soundId)
         return START_STICKY
     }
 
@@ -64,17 +68,21 @@ class AlarmService : Service() {
         super.onDestroy()
     }
 
-    private fun startOne(timerId: String, name: String, soundId: String) {
+    private fun startOne(timerId: String, text: AlarmText, soundId: String) {
         ensureChannel()
+        // A bread reminder can ring a timer again; its old player would
+        // otherwise be orphaned, still playing, with nothing left to stop it.
+        cancelSelfClear(timerId)
+        ringing.remove(timerId)?.player?.stop()
         val sound = soundById(soundId)
         val player = AlarmPlayer().also {
             if (sound.loop) it.playLooping(sound.notes) else it.playOnce(sound.notes)
         }
-        ringing[timerId] = Ringing(name, player, sound.loop)
+        ringing[timerId] = Ringing(text, player, sound.loop)
         restartVibration()
         if (!sound.loop) scheduleSelfClear(timerId, phraseDurationMs(sound.notes).toLong())
 
-        val notification = buildNotification(timerId, name)
+        val notification = buildNotification(timerId, text)
         val currentAnchor = anchorTimerId
         if (currentAnchor == null) {
             anchorTimerId = timerId
@@ -122,7 +130,7 @@ class AlarmService : Service() {
             anchorTimerId == timerId -> {
                 val (nextId, next) = ringing.entries.first()
                 anchorTimerId = nextId
-                startForeground(nextId.hashCode(), buildNotification(nextId, next.name))
+                startForeground(nextId.hashCode(), buildNotification(nextId, next.text))
             }
         }
     }
@@ -160,7 +168,7 @@ class AlarmService : Service() {
         notificationManager.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(timerId: String, name: String): Notification {
+    private fun buildNotification(timerId: String, text: AlarmText): Notification {
         val openAppIntent = PendingIntent.getActivity(
             this,
             0,
@@ -182,13 +190,13 @@ class AlarmService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(R.string.notification_title_format, name))
-            .setContentText(getString(R.string.notification_body))
+            .setContentTitle(text.title)
+            .setContentText(text.body)
             .setContentIntent(openAppIntent)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .addAction(0, getString(R.string.notification_stop_action), stopPendingIntent)
+            .addAction(0, text.stopLabel, stopPendingIntent)
             .build()
     }
 
@@ -196,10 +204,12 @@ class AlarmService : Service() {
         private const val CHANNEL_ID = "tokei_alarms"
         private const val ACTION_STOP = "com.ejzimmer.tokei.action.STOP"
 
-        fun start(context: Context, timerId: String, timerName: String, soundId: String) {
+        fun start(context: Context, timerId: String, text: AlarmText, soundId: String) {
             val intent = Intent(context, AlarmService::class.java).apply {
                 putExtra(EXTRA_TIMER_ID, timerId)
-                putExtra(EXTRA_TIMER_NAME, timerName)
+                putExtra(EXTRA_ALARM_TITLE, text.title)
+                putExtra(EXTRA_ALARM_BODY, text.body)
+                putExtra(EXTRA_ALARM_STOP_LABEL, text.stopLabel)
                 putExtra(EXTRA_SOUND_ID, soundId)
             }
             context.startForegroundService(intent)

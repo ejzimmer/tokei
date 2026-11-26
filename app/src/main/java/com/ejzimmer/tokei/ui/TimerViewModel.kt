@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.ejzimmer.tokei.alarm.AlarmEvents
 import com.ejzimmer.tokei.alarm.AlarmScheduler
 import com.ejzimmer.tokei.alarm.AlarmService
+import com.ejzimmer.tokei.alarm.BreadReminderScheduler
 import com.ejzimmer.tokei.alarm.CountdownNotifier
 import com.ejzimmer.tokei.alarm.WorkReminderScheduler
 import com.ejzimmer.tokei.audio.AlarmPlayer
@@ -22,10 +23,14 @@ import com.ejzimmer.tokei.data.WorkSchedule
 import com.ejzimmer.tokei.data.WorkState
 import com.ejzimmer.tokei.data.claimedForStart
 import com.ejzimmer.tokei.data.cycleCompleted
+import com.ejzimmer.tokei.data.isBread
+import com.ejzimmer.tokei.data.isBreadWaitingForFridge
 import com.ejzimmer.tokei.data.isWorkTimer
 import com.ejzimmer.tokei.data.localDateOf
 import com.ejzimmer.tokei.data.markFinished
+import com.ejzimmer.tokei.data.putBreadInFridge
 import com.ejzimmer.tokei.data.reconciled
+import com.ejzimmer.tokei.data.restartBread
 import com.ejzimmer.tokei.data.restoreSavedDurations
 import com.ejzimmer.tokei.data.runStarted
 import com.ejzimmer.tokei.data.runStopped
@@ -93,6 +98,11 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         viewModelScope.launch {
+            AlarmEvents.timersChanged.collect {
+                _timers.value = repository.loadRaw()
+            }
+        }
+        viewModelScope.launch {
             var lastDay = LocalDate.now().toEpochDay()
             while (true) {
                 delay(250)
@@ -154,6 +164,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             CountdownNotifier.cancel(context, timerId)
         }
         if (timer.status == TimerStatus.RINGING) AlarmService.stop(context, timerId)
+        BreadReminderScheduler.cancel(context, timerId)
         RunCounts.clear(timerId)
         _timers.value = _timers.value.filterNot { it.id == timerId }
         persist()
@@ -162,7 +173,15 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     // Blank is allowed here: the UI decides when an empty name should fall
     // back to "Timer" (on focus loss), not every debounced keystroke while
     // the user is still mid-edit.
-    fun rename(timerId: String, name: String) = mutate(timerId) { it.name = name }
+    fun rename(timerId: String, name: String) {
+        val wasBread = _timers.value.find { it.id == timerId }?.isBread ?: return
+        mutate(timerId) {
+            it.name = name
+            if (!wasBread && it.isBread && it.status == TimerStatus.IDLE) it.restartBread()
+        }
+        val isBread = _timers.value.find { it.id == timerId }?.isBread ?: return
+        if (wasBread && !isBread) BreadReminderScheduler.cancel(getApplication<Application>(), timerId)
+    }
 
     fun setSound(timerId: String, soundId: String) = mutate(timerId) { it.soundId = soundId }
 
@@ -218,6 +237,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         if (timerId == WORK_TIMER_ID) return startWork()
         val found = _timers.value.find { it.id == timerId } ?: return
         if (found.isStopwatch) return startStopwatch(found)
+        if (found.isBreadWaitingForFridge) return
         // Typing leaves overflow (e.g. 90 in the minutes box) for here, so
         // carry it before the duration is read.
         mutate(timerId) { it.normalize() }
@@ -228,6 +248,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         // Starting straight out of a ringing alarm silences it, so moving on
         // to the next phase is one press rather than Stop and then Start.
         if (timer.status == TimerStatus.RINGING) AlarmService.stop(context, timerId)
+        if (timer.isBread) BreadReminderScheduler.cancel(context, timerId)
         // Resuming a pause isn't a new run; picking up from a finished alarm is
         // -- that used to be counted on the way back through IDLE.
         val isFreshStart = timer.status != TimerStatus.PAUSED
@@ -273,6 +294,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             CountdownNotifier.cancel(context, timerId)
         }
         if (timer.status == TimerStatus.RINGING) AlarmService.stop(context, timerId)
+        if (timer.isBread) BreadReminderScheduler.cancel(context, timerId)
         mutate(timerId) {
             it.status = TimerStatus.IDLE
             it.endAtEpochMs = null
@@ -287,7 +309,18 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             }
             it.stopwatchStartAtEpochMs = null
             it.stopwatchElapsedMs = 0L
+            // Like a pomodoro, a bread timer starts the whole bake over.
+            if (it.isBread) it.restartBread()
         }
+    }
+
+    /** Ends the bake once the proof has rung: silences the alarm, stops the
+     * minute-by-minute reminders, and sets up the first stretch & fold again. */
+    fun putBreadInFridge(timerId: String) {
+        val context = getApplication<Application>()
+        AlarmService.stop(context, timerId)
+        BreadReminderScheduler.cancel(context, timerId)
+        mutate(timerId) { it.putBreadInFridge() }
     }
 
     /** Silences the alarm and leaves the timer idle. A pomodoro's handover to

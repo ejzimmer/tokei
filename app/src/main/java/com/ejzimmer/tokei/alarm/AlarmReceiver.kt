@@ -8,6 +8,7 @@ import com.ejzimmer.tokei.data.TimerRepository
 import com.ejzimmer.tokei.data.TimerStatus
 import com.ejzimmer.tokei.data.alarmSoundId
 import com.ejzimmer.tokei.data.cycleCompleted
+import com.ejzimmer.tokei.data.isBreadWaitingForNextStep
 import com.ejzimmer.tokei.data.isWorkTimer
 import com.ejzimmer.tokei.data.localDateOf
 import com.ejzimmer.tokei.data.markFinished
@@ -42,7 +43,8 @@ class AlarmReceiver : BroadcastReceiver() {
         repository.save(timers)
 
         CountdownNotifier.cancel(context, timerId)
-        AlarmService.start(context, timerId, timer.name, soundId)
+        AlarmService.start(context, timerId, createAlarmText(context, timer), soundId)
+        if (timer.isBreadWaitingForNextStep) BreadReminderScheduler.scheduleNextReminder(context, timerId, finishedAt)
         AlarmEvents.notifyFinished(timerId, finishedAt)
     }
 

@@ -31,6 +31,9 @@ val FlagIcon = iconVector("flag", "M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z")
 /** A square -- silencing a ringing alarm, which stops rather than pauses. */
 val StopIcon = iconVector("stop", "M6 6h12v12H6z")
 
+/** A tick -- saying the bread is in the fridge. */
+val CheckIcon = iconVector("check", "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z")
+
 /** A beamed pair of notes -- previewing a timer's tone. Three paths: the
  * stems and their beam as one outline, then a head hung off each stem. */
 val MusicNotesIcon = iconVector(
