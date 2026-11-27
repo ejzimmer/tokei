@@ -55,6 +55,9 @@ import com.ejzimmer.tokei.data.PomodoroPhase
 import com.ejzimmer.tokei.data.TimerData
 import com.ejzimmer.tokei.data.TimerStatus
 import com.ejzimmer.tokei.data.WorkSchedule
+import com.ejzimmer.tokei.data.breadStepLabel
+import com.ejzimmer.tokei.data.isBread
+import com.ejzimmer.tokei.data.isBreadWaitingForFridge
 import com.ejzimmer.tokei.data.stopwatchElapsedAt
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -78,6 +81,7 @@ fun TimerCard(
     onSelectPhase: (PomodoroPhase) -> Unit = {},
     onRestSoundChange: (String) -> Unit = {},
     onPreviewRestSound: () -> Unit = {},
+    onPutBreadInFridge: () -> Unit = {},
     workInfo: WorkCardInfo? = null,
     autoFocus: Boolean = false,
     onAutoFocused: () -> Unit = {},
@@ -116,102 +120,108 @@ fun TimerCard(
     ) {
         Header(name = timer.name, onRename = onRename, onDelete = onDelete)
 
-        if (timer.isStopwatch) {
-            // Counts up, so there's nothing to set: the same big read-only
-            // clock a running countdown shows, from zero.
-            val totalSeconds = timer.stopwatchElapsedAt(nowMs) / 1000
-            ReadOnlyDuration(
-                (totalSeconds / 3600).toInt(),
-                ((totalSeconds % 3600) / 60).toInt(),
-                (totalSeconds % 60).toInt(),
-                accent = timer.status == TimerStatus.RUNNING,
-            )
-        } else if (timer.isPomodoro) {
-            PomodoroDualDisplay(
-                timer = timer,
-                nowMs = nowMs,
-                onSelectPhase = onSelectPhase,
-                onDigit = onDigit,
-                onBackspace = onBackspace,
-                onSubmit = onStartPause,
-                firstFieldFocus = firstFieldFocus,
-            )
-        } else if (timer.status == TimerStatus.IDLE) {
-            EditableDurationFields(
-                timer.hours, timer.minutes, timer.seconds,
-                onDigit = { field, digit -> onDigit(PomodoroPhase.WORK, field, digit) },
-                onBackspace = { field -> onBackspace(PomodoroPhase.WORK, field) },
-                // Only editable while idle, so this is always a Start.
-                onSubmit = onStartPause,
-                focusRequester = firstFieldFocus,
-            )
+        if (timer.isBreadWaitingForFridge) {
+            BreadFridgePrompt(onPutInFridge = onPutBreadInFridge)
         } else {
-            val (h, m, s) = remainingParts(timer, nowMs)
-            ReadOnlyDuration(h, m, s, accent = timer.status == TimerStatus.RUNNING)
-        }
+            if (timer.isStopwatch) {
+                // Counts up, so there's nothing to set: the same big read-only
+                // clock a running countdown shows, from zero.
+                val totalSeconds = timer.stopwatchElapsedAt(nowMs) / 1000
+                ReadOnlyDuration(
+                    (totalSeconds / 3600).toInt(),
+                    ((totalSeconds % 3600) / 60).toInt(),
+                    (totalSeconds % 60).toInt(),
+                    accent = timer.status == TimerStatus.RUNNING,
+                )
+            } else if (timer.isPomodoro) {
+                PomodoroDualDisplay(
+                    timer = timer,
+                    nowMs = nowMs,
+                    onSelectPhase = onSelectPhase,
+                    onDigit = onDigit,
+                    onBackspace = onBackspace,
+                    onSubmit = onStartPause,
+                    firstFieldFocus = firstFieldFocus,
+                )
+            } else if (timer.status == TimerStatus.IDLE) {
+                EditableDurationFields(
+                    timer.hours, timer.minutes, timer.seconds,
+                    onDigit = { field, digit -> onDigit(PomodoroPhase.WORK, field, digit) },
+                    onBackspace = { field -> onBackspace(PomodoroPhase.WORK, field) },
+                    // Only editable while idle, so this is always a Start.
+                    onSubmit = onStartPause,
+                    focusRequester = firstFieldFocus,
+                )
+            } else {
+                val (h, m, s) = remainingParts(timer, nowMs)
+                ReadOnlyDuration(h, m, s, accent = timer.status == TimerStatus.RUNNING)
+            }
 
-        timer.lastFinishedAtEpochMs?.let {
-            Text(
-                "Last finished ${formatClockTime(it)}",
-                color = FaceDim,
-                fontSize = 12.sp,
-            )
-        }
-
-        if (runCount > 0) {
-            Text(
-                if (runCount == 1) "Run once today" else "Run $runCount times today",
-                color = FaceDim,
-                fontSize = 12.sp,
-            )
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(
-                onClick = onReset,
-                colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
-            ) {
-                Icon(
-                    ResetIcon,
-                    contentDescription = "Reset",
-                    modifier = Modifier.size(20.dp),
+            timer.lastFinishedAtEpochMs?.let {
+                Text(
+                    "Last finished ${formatClockTime(it)}",
+                    color = FaceDim,
+                    fontSize = 12.sp,
                 )
             }
-            Button(
-                onClick = onStartPause,
-                colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Background),
-            ) {
-                Icon(
-                    if (timer.status == TimerStatus.RUNNING) PauseIcon else StartIcon,
-                    contentDescription = startPauseLabel(timer.status, isWork = false),
-                    modifier = Modifier.size(20.dp),
+
+            if (timer.isBread) {
+                Text(timer.breadStepLabel(), color = Face, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            } else if (runCount > 0) {
+                Text(
+                    if (runCount == 1) "Run once today" else "Run $runCount times today",
+                    color = FaceDim,
+                    fontSize = 12.sp,
                 )
             }
-        }
 
-        if (isRinging) {
-            // A square, not the pause bars: this one silences the alarm
-            // outright rather than holding anything mid-count.
-            Button(
-                onClick = onStopAlarm,
-                colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
-            ) {
-                Icon(StopIcon, contentDescription = "Stop", modifier = Modifier.size(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = onReset,
+                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
+                ) {
+                    Icon(
+                        ResetIcon,
+                        contentDescription = "Reset",
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                Button(
+                    onClick = onStartPause,
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Background),
+                ) {
+                    Icon(
+                        if (timer.status == TimerStatus.RUNNING) PauseIcon else StartIcon,
+                        contentDescription = startPauseLabel(timer.status, isWork = false),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
-        }
 
-        // Below the buttons: picking a tone is setup, not something you reach
-        // for mid-countdown. A stopwatch never ends, so it has no alarm
-        // sound to pick.
-        if (timer.isPomodoro) {
-            // One alarm per phase: a short one suits the end of work, while
-            // the end of a break is easy to miss unless it keeps going.
-            Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
-                SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound, label = "Work")
-                SoundRow(soundId = timer.restSoundId, onSoundChange = onRestSoundChange, onPreview = onPreviewRestSound, label = "Rest")
+            if (isRinging) {
+                // A square, not the pause bars: this one silences the alarm
+                // outright rather than holding anything mid-count.
+                Button(
+                    onClick = onStopAlarm,
+                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = Face),
+                ) {
+                    Icon(StopIcon, contentDescription = "Stop", modifier = Modifier.size(20.dp))
+                }
             }
-        } else if (!timer.isStopwatch) {
-            SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
+
+            // Below the buttons: picking a tone is setup, not something you reach
+            // for mid-countdown. A stopwatch never ends, so it has no alarm
+            // sound to pick.
+            if (timer.isPomodoro) {
+                // One alarm per phase: a short one suits the end of work, while
+                // the end of a break is easy to miss unless it keeps going.
+                Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+                    SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound, label = "Work")
+                    SoundRow(soundId = timer.restSoundId, onSoundChange = onRestSoundChange, onPreview = onPreviewRestSound, label = "Rest")
+                }
+            } else if (!timer.isStopwatch && !timer.isBread) {
+                SoundRow(soundId = timer.soundId, onSoundChange = onSoundChange, onPreview = onPreviewSound)
+            }
         }
     }
 }

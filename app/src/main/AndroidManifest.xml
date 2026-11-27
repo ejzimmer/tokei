@@ -35,6 +35,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".alarm.BreadReminderReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".alarm.WorkReminderReceiver"
             android:exported="false" />
 
